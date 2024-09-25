@@ -1,6 +1,6 @@
 use std::env::current_dir;
 use std::{fs, process, thread};
-use tempfile::NamedTempFile;
+use tempfile::{TempDir, NamedTempFile};
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -91,15 +91,7 @@ fn main() {
         values.push(rng.gen());
     }
 
-    let tmpdir = current_dir().unwrap().join(".benchmark");
-    fs::create_dir(&tmpdir).unwrap();
-
-    let tmpdir2 = tmpdir.clone();
-    ctrlc::set_handler(move || {
-        fs::remove_dir_all(&tmpdir2).unwrap();
-        process::exit(1);
-    })
-    .unwrap();
+    let tmpdir = TempDir::new().unwrap();
 
     single_threaded(&values);
 

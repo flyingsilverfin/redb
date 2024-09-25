@@ -3,6 +3,7 @@ use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
 use std::{fs, process, thread};
+use heed::EnvFlags;
 use tempfile::{NamedTempFile, TempDir};
 
 mod common;
@@ -10,10 +11,10 @@ use common::*;
 
 use std::time::{Duration, Instant};
 
-const ITERATIONS: usize = 2;
+const ITERATIONS: usize = 1;
 const ELEMENTS: usize = 1_000_000;
-const KEY_SIZE: usize = 24;
-const VALUE_SIZE: usize = 150;
+const KEY_SIZE: usize = 48;
+const VALUE_SIZE: usize = 2;
 const RNG_SEED: u64 = 3;
 
 fn fill_slice(slice: &mut [u8], rng: &mut fastrand::Rng) {
@@ -49,7 +50,7 @@ fn gen_pair(rng: &mut fastrand::Rng) -> ([u8; KEY_SIZE], Vec<u8>) {
     fill_slice(&mut key, rng);
     let mut value = vec![0u8; VALUE_SIZE];
     fill_slice(&mut value, rng);
-
+    // value[0] += 1; // TODO: sometimes required to make the bytes not equal to 0??
     (key, value)
 }
 
@@ -128,7 +129,7 @@ fn benchmark<T: BenchDatabase + Send + Sync>(db: T) -> Vec<(String, ResultType)>
     let batch_size = 1000;
     {
         for _ in 0..writes {
-            let mut txn = db.write_transaction();
+            let mut txn: <T as BenchDatabase>::W<'_> = db.write_transaction();
             let mut inserter = txn.get_inserter();
             for _ in 0..batch_size {
                 let (key, value) = gen_pair(&mut rng);
@@ -260,14 +261,14 @@ fn benchmark<T: BenchDatabase + Send + Sync>(db: T) -> Vec<(String, ResultType)>
     }
 
     let start = Instant::now();
-    let deletes = ELEMENTS / 2;
+    let deletes = 10000;// ELEMENTS / 2;
     {
         let mut rng = make_rng();
         let mut txn = db.write_transaction();
         let mut inserter = txn.get_inserter();
         for _ in 0..deletes {
             let (key, _value) = gen_pair(&mut rng);
-            inserter.remove(&key).unwrap();
+            let _ = inserter.remove(&key);
         }
         drop(inserter);
         txn.commit().unwrap();
@@ -318,45 +319,44 @@ impl std::fmt::Display for ResultType {
 }
 
 fn main() {
-    let tmpdir = current_dir().unwrap().join(".benchmark");
-    fs::create_dir(&tmpdir).unwrap();
+    let tmpdir = TempDir::new().unwrap();
+    dbg!("Using benchmark dir: {}", &tmpdir);
 
-    let tmpdir2 = tmpdir.clone();
-    ctrlc::set_handler(move || {
-        fs::remove_dir_all(&tmpdir2).unwrap();
-        process::exit(1);
-    })
-    .unwrap();
+    // let redb_latency_results = {
+    //     let tmpfile: NamedTempFile = NamedTempFile::new_in(&tmpdir).unwrap();
+    //     let mut db = redb::Database::builder()
+    //         .set_cache_size(4 * 1024 * 1024 * 1024)
+    //         .create(tmpfile.path())
+    //         .unwrap();
+    //     let table = RedbBenchDatabase::new(&db);
+    //     let mut results = benchmark(table);
 
-    let redb_latency_results = {
-        let tmpfile: NamedTempFile = NamedTempFile::new_in(&tmpdir).unwrap();
-        let mut db = redb::Database::builder()
-            .set_cache_size(4 * 1024 * 1024 * 1024)
-            .create(tmpfile.path())
-            .unwrap();
-        let table = RedbBenchDatabase::new(&db);
-        let mut results = benchmark(table);
+    //     let start = Instant::now();
+    //     db.compact().unwrap();
+    //     let end = Instant::now();
+    //     let duration = end - start;
+    //     println!("redb: Compacted in {}ms", duration.as_millis());
+    //     results.push(("compaction".to_string(), ResultType::Duration(duration)));
 
-        let start = Instant::now();
-        db.compact().unwrap();
-        let end = Instant::now();
-        let duration = end - start;
-        println!("redb: Compacted in {}ms", duration.as_millis());
-        results.push(("compaction".to_string(), ResultType::Duration(duration)));
-
-        let size = database_size(tmpfile.path());
-        results.push((
-            "size after bench".to_string(),
-            ResultType::SizeInBytes(size),
-        ));
-        results
-    };
+    //     let size = database_size(tmpfile.path());
+    //     results.push((
+    //         "size after bench".to_string(),
+    //         ResultType::SizeInBytes(size),
+    //     ));
+    //     results
+    // };
 
     let lmdb_results = {
         let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
         let env = unsafe {
-            heed::EnvOpenOptions::new()
-                .map_size(4096 * 1024 * 1024)
+            let mut options = heed::EnvOpenOptions::new();
+            options.map_size(4096 * 1024 * 1024);
+
+
+            // NOTE: Uncomment if we want to disable FSYNC & readahead, which may be required to scale write performance. We will want the NO_TLS option in TypeDB as well
+            // unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
+
+                options
                 .open(tmpfile.path())
                 .unwrap()
         };
@@ -381,7 +381,9 @@ fn main() {
         opts.set_block_based_table_factory(&bb);
         opts.create_if_missing(true);
 
-        let db = rocksdb::TransactionDB::open(&opts, &Default::default(), tmpfile.path()).unwrap();
+        let options = Default::default();
+
+        let db = rocksdb::TransactionDB::open(&opts, &options, tmpfile.path()).unwrap();
         let table = RocksdbBenchDatabase::new(&db);
         let mut results = benchmark(table);
         results.push(("compaction".to_string(), ResultType::NA));
@@ -393,49 +395,49 @@ fn main() {
         results
     };
 
-    let sled_results = {
-        let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
-        let db = sled::Config::new().path(tmpfile.path()).open().unwrap();
-        let table = SledBenchDatabase::new(&db, tmpfile.path());
-        let mut results = benchmark(table);
-        results.push(("compaction".to_string(), ResultType::NA));
-        let size = database_size(tmpfile.path());
-        results.push((
-            "size after bench".to_string(),
-            ResultType::SizeInBytes(size),
-        ));
-        results
-    };
+    // let sled_results = {
+    //     let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
+    //     let db = sled::Config::new().path(tmpfile.path()).open().unwrap();
+    //     let table = SledBenchDatabase::new(&db, tmpfile.path());
+    //     let mut results = benchmark(table);
+    //     results.push(("compaction".to_string(), ResultType::NA));
+    //     let size = database_size(tmpfile.path());
+    //     results.push((
+    //         "size after bench".to_string(),
+    //         ResultType::SizeInBytes(size),
+    //     ));
+    //     results
+    // };
 
-    let sanakirja_results = {
-        let tmpfile: NamedTempFile = NamedTempFile::new_in(&tmpdir).unwrap();
-        fs::remove_file(tmpfile.path()).unwrap();
-        let db = sanakirja::Env::new(tmpfile.path(), 4096 * 1024 * 1024, 2).unwrap();
-        let table = SanakirjaBenchDatabase::new(&db);
-        let mut results = benchmark(table);
-        results.push(("compaction".to_string(), ResultType::NA));
-        let size = database_size(tmpfile.path());
-        results.push((
-            "size after bench".to_string(),
-            ResultType::SizeInBytes(size),
-        ));
-        results
-    };
+    // let sanakirja_results = {
+    //     let tmpfile: NamedTempFile = NamedTempFile::new_in(&tmpdir).unwrap();
+    //     fs::remove_file(tmpfile.path()).unwrap();
+    //     let db = sanakirja::Env::new(tmpfile.path(), 4096 * 1024 * 1024, 2).unwrap();
+    //     let table = SanakirjaBenchDatabase::new(&db);
+    //     let mut results = benchmark(table);
+    //     results.push(("compaction".to_string(), ResultType::NA));
+    //     let size = database_size(tmpfile.path());
+    //     results.push((
+    //         "size after bench".to_string(),
+    //         ResultType::SizeInBytes(size),
+    //     ));
+    //     results
+    // };
 
     fs::remove_dir_all(&tmpdir).unwrap();
 
-    let mut rows = Vec::new();
+    let mut rows: Vec<Vec<String>> = Vec::new();
 
-    for (benchmark, _duration) in &redb_latency_results {
+    for (benchmark, _duration) in &lmdb_results {
         rows.push(vec![benchmark.to_string()]);
     }
 
     let results = [
-        redb_latency_results,
+        // redb_latency_results,
         lmdb_results,
         rocksdb_results,
-        sled_results,
-        sanakirja_results,
+        // sled_results,
+        // sanakirja_results,
     ];
 
     let mut identified_smallests = vec![vec![false; results.len()]; rows.len()];
@@ -455,18 +457,23 @@ fn main() {
 
     for (j, results) in results.iter().enumerate() {
         for (i, (_benchmark, result_type)) in results.iter().enumerate() {
-            rows[i].push(if identified_smallests[i][j] {
-                format!("**{result_type}**")
-            } else {
+            rows[i].push(
+            //     if identified_smallests[i][j] {
+            //     format!("**{result_type}**")
+            // } else {
                 result_type.to_string()
-            });
+            // }
+            );
         }
     }
 
     let mut table = comfy_table::Table::new();
     table.load_preset(comfy_table::presets::ASCII_MARKDOWN);
     table.set_width(100);
-    table.set_header(["", "redb", "lmdb", "rocksdb", "sled", "sanakirja"]);
+    table.set_header(["", //"redb",
+    "lmdb", "rocksdb",
+    // "sled", "sanakirja"
+    ]);
     for row in rows {
         table.add_row(row);
     }

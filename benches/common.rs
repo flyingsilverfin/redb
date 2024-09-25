@@ -462,7 +462,11 @@ impl<'a> BenchDatabase for RocksdbBenchDatabase<'a> {
 
     fn write_transaction(&self) -> Self::W<'_> {
         let mut write_opt = WriteOptions::new();
-        write_opt.set_sync(true);
+
+
+        // NOTE: if we want to disable fsync on commit, we uncomment the following
+        // write_opt.set_sync(false);
+
         let mut txn_opt = TransactionOptions::new();
         txn_opt.set_snapshot(true);
         let txn = self.db.transaction_opt(&write_opt, &txn_opt);
