@@ -12,7 +12,7 @@ use common::*;
 use std::time::{Duration, Instant};
 
 const ITERATIONS: usize = 1;
-const ELEMENTS: usize = 1_000_000;
+const ELEMENTS: usize = 1_000_000 * 10_00; // to generate roughly 100GB
 const KEY_SIZE: usize = 48;
 const VALUE_SIZE: usize = 2;
 const RNG_SEED: u64 = 3;
