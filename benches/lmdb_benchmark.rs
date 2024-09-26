@@ -322,30 +322,30 @@ fn main() {
     let tmpdir = TempDir::new_in("/mnt/balanced-pd/tmp").unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
 
-    let lmdb_results = {
-        let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
-        let env = unsafe {
-            let mut options = heed::EnvOpenOptions::new();
-            options.map_size(4096 * 1024 * 1024);
-
-
-            // NOTE: Uncomment if we want to disable FSYNC & readahead, which may be required to scale write performance. We will want the NO_TLS option in TypeDB as well
-            // unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
-
-                options
-                .open(tmpfile.path())
-                .unwrap()
-        };
-        let table = HeedBenchDatabase::new(&env);
-        let mut results = benchmark(table);
-        results.push(("compaction".to_string(), ResultType::NA));
-        let size = database_size(tmpfile.path());
-        results.push((
-            "size after bench".to_string(),
-            ResultType::SizeInBytes(size),
-        ));
-        results
-    };
+    // let lmdb_results = {
+    //     let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
+    //     let env = unsafe {
+    //         let mut options = heed::EnvOpenOptions::new();
+    //         options.map_size(4096 * 1024 * 1024);
+    //
+    //
+    //         // NOTE: Uncomment if we want to disable FSYNC & readahead, which may be required to scale write performance. We will want the NO_TLS option in TypeDB as well
+    //         // unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
+    //
+    //             options
+    //             .open(tmpfile.path())
+    //             .unwrap()
+    //     };
+    //     let table = HeedBenchDatabase::new(&env);
+    //     let mut results = benchmark(table);
+    //     results.push(("compaction".to_string(), ResultType::NA));
+    //     let size = database_size(tmpfile.path());
+    //     results.push((
+    //         "size after bench".to_string(),
+    //         ResultType::SizeInBytes(size),
+    //     ));
+    //     results
+    // };
 
     let rocksdb_results = {
         let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
@@ -375,12 +375,12 @@ fn main() {
 
     let mut rows: Vec<Vec<String>> = Vec::new();
 
-    for (benchmark, _duration) in &lmdb_results {
-        rows.push(vec![benchmark.to_string()]);
-    }
+    // for (benchmark, _duration) in &lmdb_results {
+    //     rows.push(vec![benchmark.to_string()]);
+    // }
 
     let results = [
-        lmdb_results,
+        // lmdb_results,
         rocksdb_results,
     ];
 
