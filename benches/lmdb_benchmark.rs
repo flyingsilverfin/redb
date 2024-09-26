@@ -322,30 +322,6 @@ fn main() {
     let tmpdir = TempDir::new().unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
 
-    // let redb_latency_results = {
-    //     let tmpfile: NamedTempFile = NamedTempFile::new_in(&tmpdir).unwrap();
-    //     let mut db = redb::Database::builder()
-    //         .set_cache_size(4 * 1024 * 1024 * 1024)
-    //         .create(tmpfile.path())
-    //         .unwrap();
-    //     let table = RedbBenchDatabase::new(&db);
-    //     let mut results = benchmark(table);
-
-    //     let start = Instant::now();
-    //     db.compact().unwrap();
-    //     let end = Instant::now();
-    //     let duration = end - start;
-    //     println!("redb: Compacted in {}ms", duration.as_millis());
-    //     results.push(("compaction".to_string(), ResultType::Duration(duration)));
-
-    //     let size = database_size(tmpfile.path());
-    //     results.push((
-    //         "size after bench".to_string(),
-    //         ResultType::SizeInBytes(size),
-    //     ));
-    //     results
-    // };
-
     let lmdb_results = {
         let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
         let env = unsafe {
@@ -395,35 +371,6 @@ fn main() {
         results
     };
 
-    // let sled_results = {
-    //     let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
-    //     let db = sled::Config::new().path(tmpfile.path()).open().unwrap();
-    //     let table = SledBenchDatabase::new(&db, tmpfile.path());
-    //     let mut results = benchmark(table);
-    //     results.push(("compaction".to_string(), ResultType::NA));
-    //     let size = database_size(tmpfile.path());
-    //     results.push((
-    //         "size after bench".to_string(),
-    //         ResultType::SizeInBytes(size),
-    //     ));
-    //     results
-    // };
-
-    // let sanakirja_results = {
-    //     let tmpfile: NamedTempFile = NamedTempFile::new_in(&tmpdir).unwrap();
-    //     fs::remove_file(tmpfile.path()).unwrap();
-    //     let db = sanakirja::Env::new(tmpfile.path(), 4096 * 1024 * 1024, 2).unwrap();
-    //     let table = SanakirjaBenchDatabase::new(&db);
-    //     let mut results = benchmark(table);
-    //     results.push(("compaction".to_string(), ResultType::NA));
-    //     let size = database_size(tmpfile.path());
-    //     results.push((
-    //         "size after bench".to_string(),
-    //         ResultType::SizeInBytes(size),
-    //     ));
-    //     results
-    // };
-
     fs::remove_dir_all(&tmpdir).unwrap();
 
     let mut rows: Vec<Vec<String>> = Vec::new();
@@ -433,11 +380,8 @@ fn main() {
     }
 
     let results = [
-        // redb_latency_results,
         lmdb_results,
         rocksdb_results,
-        // sled_results,
-        // sanakirja_results,
     ];
 
     let mut identified_smallests = vec![vec![false; results.len()]; rows.len()];
@@ -470,9 +414,8 @@ fn main() {
     let mut table = comfy_table::Table::new();
     table.load_preset(comfy_table::presets::ASCII_MARKDOWN);
     table.set_width(100);
-    table.set_header(["", //"redb",
+    table.set_header(["",
     "lmdb", "rocksdb",
-    // "sled", "sanakirja"
     ]);
     for row in rows {
         table.add_row(row);
