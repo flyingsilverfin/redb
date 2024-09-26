@@ -319,7 +319,7 @@ impl std::fmt::Display for ResultType {
 }
 
 fn main() {
-    let tmpdir = TempDir::new().unwrap();
+    let tmpdir = TempDir::new_in("/mnt/balanced-pd/tmp").unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
 
     let lmdb_results = {
