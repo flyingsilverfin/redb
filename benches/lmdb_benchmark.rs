@@ -83,12 +83,7 @@ fn benchmark<T: BenchDatabase + Send + Sync>(db: T) -> Vec<(String, ResultType)>
     {
         for _ in 0..ELEMENTS {
             let (key, value) = gen_pair(&mut rng);
-            match inserter.insert(&key, &value) {
-                Ok(r) => {}
-                Err(e) => {
-                    println!("error in inserting key '{}' value '{}'", &key, &value)
-                }
-            };
+            inserter.insert(&key, &value).unwrap();
         }
     }
     drop(inserter);
