@@ -12,7 +12,7 @@ use common::*;
 use std::time::{Duration, Instant};
 
 const ITERATIONS: usize = 1;
-const ELEMENTS: usize = 1_000_000 * 100; // to generate roughly 100GB
+const ELEMENTS: usize = 1_000_000 * 10_00; // to generate roughly 100GB
 const KEY_SIZE: usize = 48;
 const VALUE_SIZE: usize = 2;
 const RNG_SEED: u64 = 3;
@@ -322,45 +322,21 @@ fn main() {
     let tmpdir = TempDir::new_in("/mnt/balanced-pd/tmp").unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
 
-    // let lmdb_results = {
-    //     let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
-    //     let env = unsafe {
-    //         let mut options = heed::EnvOpenOptions::new();
-    //         options.map_size(4096 * 1024 * 1024);
-    //
-    //
-    //         // NOTE: Uncomment if we want to disable FSYNC & readahead, which may be required to scale write performance. We will want the NO_TLS option in TypeDB as well
-    //         // unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
-    //
-    //             options
-    //             .open(tmpfile.path())
-    //             .unwrap()
-    //     };
-    //     let table = HeedBenchDatabase::new(&env);
-    //     let mut results = benchmark(table);
-    //     results.push(("compaction".to_string(), ResultType::NA));
-    //     let size = database_size(tmpfile.path());
-    //     results.push((
-    //         "size after bench".to_string(),
-    //         ResultType::SizeInBytes(size),
-    //     ));
-    //     results
-    // };
-
-    let rocksdb_results = {
+    let lmdb_results = {
         let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
+        let env = unsafe {
+            let mut options = heed::EnvOpenOptions::new();
+            options.map_size(4096 * 1024 * 1024);
 
-        let mut bb = rocksdb::BlockBasedOptions::default();
-        bb.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024));
 
-        let mut opts = rocksdb::Options::default();
-        opts.set_block_based_table_factory(&bb);
-        opts.create_if_missing(true);
+            // NOTE: Uncomment if we want to disable FSYNC & readahead, which may be required to scale write performance. We will want the NO_TLS option in TypeDB as well
+            // unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
 
-        let options = Default::default();
-
-        let db = rocksdb::TransactionDB::open(&opts, &options, tmpfile.path()).unwrap();
-        let table = RocksdbBenchDatabase::new(&db);
+                options
+                .open(tmpfile.path())
+                .unwrap()
+        };
+        let table = HeedBenchDatabase::new(&env);
         let mut results = benchmark(table);
         results.push(("compaction".to_string(), ResultType::NA));
         let size = database_size(tmpfile.path());
@@ -371,17 +347,41 @@ fn main() {
         results
     };
 
+    // let rocksdb_results = {
+    //     let tmpfile: TempDir = tempfile::tempdir_in(&tmpdir).unwrap();
+    //
+    //     let mut bb = rocksdb::BlockBasedOptions::default();
+    //     bb.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024));
+    //
+    //     let mut opts = rocksdb::Options::default();
+    //     opts.set_block_based_table_factory(&bb);
+    //     opts.create_if_missing(true);
+    //
+    //     let options = Default::default();
+    //
+    //     let db = rocksdb::TransactionDB::open(&opts, &options, tmpfile.path()).unwrap();
+    //     let table = RocksdbBenchDatabase::new(&db);
+    //     let mut results = benchmark(table);
+    //     results.push(("compaction".to_string(), ResultType::NA));
+    //     let size = database_size(tmpfile.path());
+    //     results.push((
+    //         "size after bench".to_string(),
+    //         ResultType::SizeInBytes(size),
+    //     ));
+    //     results
+    // };
+
     fs::remove_dir_all(&tmpdir).unwrap();
 
     let mut rows: Vec<Vec<String>> = Vec::new();
 
-    // for (benchmark, _duration) in &lmdb_results {
-    //     rows.push(vec![benchmark.to_string()]);
-    // }
+    for (benchmark, _duration) in &lmdb_results {
+        rows.push(vec![benchmark.to_string()]);
+    }
 
     let results = [
-        // lmdb_results,
-        rocksdb_results,
+        lmdb_results,
+        // rocksdb_results,
     ];
 
     let mut identified_smallests = vec![vec![false; results.len()]; rows.len()];
