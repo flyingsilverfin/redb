@@ -16,10 +16,11 @@ use rocksdb::TransactionDB;
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
 const RNG_SEED: u64 = 3;
 
-const PRELOAD_KEY_COUNT: usize = 2;
-const PRELOAD_KEY_PER_TX_COUNT: usize = 1;
-const BENCHMARK_OP_COUNT: usize = 1_000_000;
-const BENCHMARK_OP_PER_TX_COUNT: usize = 1_000;
+const PRELOAD_KEY_COUNT: usize = 1_000_000;
+const PRELOAD_KEY_PER_TX_COUNT: usize = 1_000;
+const BENCHMARK_OP_COUNT: usize = 1_000_00;
+const BENCHMARK_OP_PER_TX_COUNT: usize = 100;
+const BENCHMARK_ITER_PER_OP_COUNT: usize = 1000;
 const KEY_SIZE: usize = 48;
 // const PARALLELISM: usize = 1;
 
@@ -55,15 +56,16 @@ fn main() {
 fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     let start = Instant::now();
     for i in 0..(PRELOAD_KEY_COUNT / PRELOAD_KEY_PER_TX_COUNT) {
-        let mut rocksdb_tx = driver.write_transaction();
-        let mut rocksdb_inserter = rocksdb_tx.get_inserter();
-        for i in 0..PRELOAD_KEY_PER_TX_COUNT {
-            let key = gen_key(&mut rng);
-            let value = Vec::new();
-            rocksdb_inserter.insert(&key, &value).unwrap()
+        let mut tx = driver.write_transaction();
+        {
+            let mut inserter = tx.get_inserter();
+            for i in 0..PRELOAD_KEY_PER_TX_COUNT {
+                let key = gen_key(&mut rng);
+                let value = Vec::new();
+                inserter.insert(&key, &value).unwrap()
+            }
         }
-        drop(rocksdb_inserter);
-        rocksdb_tx.commit().unwrap();
+        tx.commit().unwrap();
     }
     let end = Instant::now();
     let duration = end - start;
@@ -76,19 +78,27 @@ fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
 }
 
 fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
-    let mut scanned_key_count = 0;
+    let mut total_scanned_key = 0;
     let start = Instant::now();
     for i in 0..(BENCHMARK_OP_COUNT / BENCHMARK_OP_PER_TX_COUNT) {
         let tx = driver.read_transaction();
         {
             let reader = tx.get_reader();
-            for i in 0..1 {
+            for i in 0..BENCHMARK_OP_PER_TX_COUNT {
                 let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
+                let mut scanned_key = 0;
                 let mut iter = reader.range_from(&key);
-                for i in iter.next() {
-                    scanned_key_count += 1;
-                    println!("hey: {}", scanned_key_count);
+                for i in 0..BENCHMARK_ITER_PER_OP_COUNT {
+                    scanned_key += 1;
+                    match iter.next() {
+                        Some((_, value)) => {
+                        }
+                        None => {
+                            break;
+                        }
+                    }
                 }
+                total_scanned_key += scanned_key;
             }
         }
         drop(tx);
@@ -98,7 +108,7 @@ fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     println!(
         "{}: Scan done: scanned {} total entries from {} scan ops, in {}ms",
         T::db_type_name(),
-        scanned_key_count,
+        total_scanned_key,
         BENCHMARK_OP_COUNT,
         duration.as_millis()
     );
