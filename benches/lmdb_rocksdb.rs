@@ -68,7 +68,7 @@ fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     let end = Instant::now();
     let duration = end - start;
     println!(
-        "{}: Bulk loaded {} items in {}ms",
+        "{}: Preload done: loaded {} keys in {}ms",
         T::db_type_name(),
         PRELOAD_KEY_COUNT,
         duration.as_millis()
@@ -85,7 +85,7 @@ fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
             for i in 0..1 {
                 let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
                 let mut iter = reader.range_from(&key);
-                while let Some((_, value)) = iter.next() {
+                for i in iter.next() {
                     scanned_key_count += 1;
                     println!("hey: {}", scanned_key_count);
                 }
@@ -96,7 +96,7 @@ fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     let end = Instant::now();
     let duration = end - start;
     println!(
-        "{}: Random range read {} elements in {} ops in {}ms",
+        "{}: Scan done: scanned {} total entries from {} scan ops, in {}ms",
         T::db_type_name(),
         scanned_key_count,
         BENCHMARK_OP_COUNT,
