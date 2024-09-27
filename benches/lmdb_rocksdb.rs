@@ -10,6 +10,7 @@ mod common;
 use common::*;
 
 use std::time::{Duration, Instant};
+use fastrand::Rng;
 use rocksdb::TransactionDB;
 
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
@@ -25,8 +26,6 @@ const VALUE_SIZE: usize = 0;
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
-    let mut rng = make_rng();
-
     // instantiate rocksdb
     let mut rocksdb_bb_opts = rocksdb::BlockBasedOptions::default();
     rocksdb_bb_opts.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024));
@@ -35,10 +34,19 @@ fn main() {
     rocksdb_opts.create_if_missing(true);
     let rocksdb_tx_opts = Default::default();
     let rocksdb_db: TransactionDB = rocksdb::TransactionDB::open(&rocksdb_opts, &rocksdb_tx_opts, tmpdir.path()).unwrap();
-    let rocksdb_bench = RocksdbBenchDatabase::new(&rocksdb_db);
+    let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
 
-    for i in 0..(PRELOAD_KEY_COUNT/ PRELOAD_KEY_PER_TX_COUNT) {
-        let mut rocksdb_tx = rocksdb_bench.write_transaction();
+    let mut rng = create_rng();
+    preload(&mut rng, rocksdb_driver);
+    benchmark();
+
+    fs::remove_dir_all(&tmpdir).unwrap();
+}
+
+fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: T) {
+    let start = Instant::now();
+    for i in 0..(PRELOAD_KEY_COUNT / PRELOAD_KEY_PER_TX_COUNT) {
+        let mut rocksdb_tx = driver.write_transaction();
         let mut rocksdb_inserter = rocksdb_tx.get_inserter();
         for i in 0..PRELOAD_KEY_PER_TX_COUNT {
             let key = gen_key(&mut rng);
@@ -48,17 +56,25 @@ fn main() {
         drop(rocksdb_inserter);
         rocksdb_tx.commit().unwrap();
     }
+    let end = Instant::now();
+    let duration = end - start;
+    println!(
+        "{}: Bulk loaded {} items in {}ms",
+        T::db_type_name(),
+        PRELOAD_KEY_COUNT,
+        duration.as_millis()
+    );
+}
 
-    for i in 0..(BENCH_OP_COUNT/BENCH_OP_PER_TX_COUNT) {
+fn benchmark() {
+    for i in 0..(BENCH_OP_COUNT / BENCH_OP_PER_TX_COUNT) {
         for i in 0..BENCH_OP_PER_TX_COUNT {
             // seek and iterate
         }
     }
-
-    fs::remove_dir_all(&tmpdir).unwrap();
 }
 
-fn make_rng() -> fastrand::Rng {
+fn create_rng() -> fastrand::Rng {
     fastrand::Rng::with_seed(RNG_SEED)
 }
 
