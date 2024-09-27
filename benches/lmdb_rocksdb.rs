@@ -35,7 +35,7 @@ fn main() {
     let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
     let mut rocksdb_rng = create_rng();
     preload(&mut rocksdb_rng, &rocksdb_driver);
-    benchmark();
+    benchmark(&mut rocksdb_rng);
 
     // instantiate lmdb
     let lmdb_env = unsafe {
@@ -47,7 +47,7 @@ fn main() {
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
     let mut lmdb_rng = create_rng();
     preload(&mut lmdb_rng, &lmdb_driver);
-    benchmark();
+    benchmark(&mut lmdb_rng);
 
     fs::remove_dir_all(&tmpdir).unwrap();
 }
@@ -75,7 +75,7 @@ fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     );
 }
 
-fn benchmark() {
+fn benchmark(mut rng: &mut Rng) {
     for i in 0..(BENCHMARK_OP_COUNT / BENCHMARK_OP_PER_TX_COUNT) {
         for i in 0..BENCHMARK_OP_PER_TX_COUNT {
             // seek and iterate
