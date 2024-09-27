@@ -17,10 +17,11 @@ const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
 const RNG_SEED: u64 = 3;
 
 const PRELOAD_KEY_COUNT: usize = 1_000_000;
-const PRELOAD_KEY_PER_TX_COUNT: usize = 10_000;
+const PRELOAD_KEY_PER_TX_COUNT: usize = 4;
 const BENCHMARK_OP_COUNT: usize = 1_000_000;
 const BENCHMARK_OP_PER_TX_COUNT: usize = 1_000;
 const KEY_SIZE: usize = 48;
+// const PARALLELISM: usize = 1;
 
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
@@ -40,6 +41,7 @@ fn main() {
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
         options.map_size(4096 * 1024 * 1024);
+        unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
         options.open(tmpdir.path()).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
