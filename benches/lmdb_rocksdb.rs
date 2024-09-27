@@ -26,6 +26,7 @@ const VALUE_SIZE: usize = 0;
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
+
     // instantiate rocksdb
     let mut rocksdb_bb_opts = rocksdb::BlockBasedOptions::default();
     rocksdb_bb_opts.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024));
@@ -35,9 +36,19 @@ fn main() {
     let rocksdb_tx_opts = Default::default();
     let rocksdb_db: TransactionDB = rocksdb::TransactionDB::open(&rocksdb_opts, &rocksdb_tx_opts, tmpdir.path()).unwrap();
     let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
+    let mut rocksdb_rng = create_rng();
+    preload(&mut rocksdb_rng, rocksdb_driver);
+    benchmark();
 
-    let mut rng = create_rng();
-    preload(&mut rng, rocksdb_driver);
+    // instantiate lmdb
+    let lmdb_env = unsafe {
+        let mut options = heed::EnvOpenOptions::new();
+        options.map_size(4096 * 1024 * 1024);
+        options.open(tmpdir.path()).unwrap()
+    };
+    let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
+    let mut lmdb_rng = create_rng();
+    preload(&mut lmdb_rng, lmdb_driver);
     benchmark();
 
     fs::remove_dir_all(&tmpdir).unwrap();
