@@ -18,26 +18,22 @@ const RNG_SEED: u64 = 3;
 
 const PRELOAD_KEY_COUNT: usize = 1_000_000;
 const PRELOAD_KEY_PER_TX_COUNT: usize = 10_000;
-const BENCH_OP_COUNT: usize = 1_000_000;
-const BENCH_OP_PER_TX_COUNT: usize = 1_000;
+const BENCHMARK_OP_COUNT: usize = 1_000_000;
+const BENCHMARK_OP_PER_TX_COUNT: usize = 1_000;
 const KEY_SIZE: usize = 48;
-const VALUE_SIZE: usize = 0;
 
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
     dbg!("Using benchmark dir: {}", &tmpdir);
 
     // instantiate rocksdb
-    let mut rocksdb_bb_opts = rocksdb::BlockBasedOptions::default();
-    rocksdb_bb_opts.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024));
     let mut rocksdb_opts = rocksdb::Options::default();
-    rocksdb_opts.set_block_based_table_factory(&rocksdb_bb_opts);
     rocksdb_opts.create_if_missing(true);
     let rocksdb_tx_opts = Default::default();
     let rocksdb_db: TransactionDB = rocksdb::TransactionDB::open(&rocksdb_opts, &rocksdb_tx_opts, tmpdir.path()).unwrap();
     let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
     let mut rocksdb_rng = create_rng();
-    preload(&mut rocksdb_rng, rocksdb_driver);
+    preload(&mut rocksdb_rng, &rocksdb_driver);
     benchmark();
 
     // instantiate lmdb
@@ -48,13 +44,13 @@ fn main() {
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
     let mut lmdb_rng = create_rng();
-    preload(&mut lmdb_rng, lmdb_driver);
+    preload(&mut lmdb_rng, &lmdb_driver);
     benchmark();
 
     fs::remove_dir_all(&tmpdir).unwrap();
 }
 
-fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: T) {
+fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     let start = Instant::now();
     for i in 0..(PRELOAD_KEY_COUNT / PRELOAD_KEY_PER_TX_COUNT) {
         let mut rocksdb_tx = driver.write_transaction();
@@ -78,8 +74,8 @@ fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: T) {
 }
 
 fn benchmark() {
-    for i in 0..(BENCH_OP_COUNT / BENCH_OP_PER_TX_COUNT) {
-        for i in 0..BENCH_OP_PER_TX_COUNT {
+    for i in 0..(BENCHMARK_OP_COUNT / BENCHMARK_OP_PER_TX_COUNT) {
+        for i in 0..BENCHMARK_OP_PER_TX_COUNT {
             // seek and iterate
         }
     }
