@@ -465,7 +465,7 @@ impl<'a> BenchDatabase for RocksdbBenchDatabase<'a> {
 
 
         // NOTE: if we want to disable fsync on commit, we uncomment the following
-        // write_opt.set_sync(false);
+        write_opt.set_sync(false);
 
         let mut txn_opt = TransactionOptions::new();
         txn_opt.set_snapshot(true);

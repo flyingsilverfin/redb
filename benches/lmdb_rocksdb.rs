@@ -16,8 +16,8 @@ use rocksdb::TransactionDB;
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
 const RNG_SEED: u64 = 3;
 
-const PRELOAD_KEY_COUNT: usize = 1_000_000;
-const PRELOAD_KEY_PER_TX_COUNT: usize = 4;
+const PRELOAD_KEY_COUNT: usize = 2;
+const PRELOAD_KEY_PER_TX_COUNT: usize = 1;
 const BENCHMARK_OP_COUNT: usize = 1_000_000;
 const BENCHMARK_OP_PER_TX_COUNT: usize = 1_000;
 const KEY_SIZE: usize = 48;
@@ -35,7 +35,7 @@ fn main() {
     let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
     let mut rocksdb_rng = create_rng();
     preload(&mut rocksdb_rng, &rocksdb_driver);
-    benchmark(&mut rocksdb_rng);
+    benchmark(&mut rocksdb_rng, &rocksdb_driver);
 
     // instantiate lmdb
     let lmdb_env = unsafe {
@@ -47,7 +47,7 @@ fn main() {
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
     let mut lmdb_rng = create_rng();
     preload(&mut lmdb_rng, &lmdb_driver);
-    benchmark(&mut lmdb_rng);
+    benchmark(&mut lmdb_rng, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
 }
@@ -75,12 +75,33 @@ fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     );
 }
 
-fn benchmark(mut rng: &mut Rng) {
+fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
+    let mut scanned_key_count = 0;
+    let start = Instant::now();
     for i in 0..(BENCHMARK_OP_COUNT / BENCHMARK_OP_PER_TX_COUNT) {
-        for i in 0..BENCHMARK_OP_PER_TX_COUNT {
-            // seek and iterate
+        let tx = driver.read_transaction();
+        {
+            let reader = tx.get_reader();
+            for i in 0..1 {
+                let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
+                let mut iter = reader.range_from(&key);
+                while let Some((_, value)) = iter.next() {
+                    scanned_key_count += 1;
+                    println!("hey: {}", scanned_key_count);
+                }
+            }
         }
+        drop(tx);
     }
+    let end = Instant::now();
+    let duration = end - start;
+    println!(
+        "{}: Random range read {} elements in {} ops in {}ms",
+        T::db_type_name(),
+        scanned_key_count,
+        BENCHMARK_OP_COUNT,
+        duration.as_millis()
+    );
 }
 
 fn create_rng() -> fastrand::Rng {
