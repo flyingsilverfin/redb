@@ -37,6 +37,7 @@ fn main() {
     let mut rocksdb_rng = create_rng();
     preload(&mut rocksdb_rng, &rocksdb_driver);
     benchmark(&mut rocksdb_rng, &rocksdb_driver);
+    print_size(&tmpdir, &rocksdb_driver);
 
     // instantiate lmdb
     let lmdb_env = unsafe {
@@ -49,6 +50,7 @@ fn main() {
     let mut lmdb_rng = create_rng();
     preload(&mut lmdb_rng, &lmdb_driver);
     benchmark(&mut lmdb_rng, &lmdb_driver);
+    print_size(&tmpdir, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
 }
@@ -114,6 +116,11 @@ fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
     );
 }
 
+fn print_size<T: BenchDatabase + Send + Sync>(tmpdir: &TempDir, _: &T) {
+    let size = database_size(tmpdir.path());
+    println!("{}: Database size: {} bytes", T::db_type_name(), size);
+}
+
 fn create_rng() -> fastrand::Rng {
     fastrand::Rng::with_seed(RNG_SEED)
 }
@@ -149,4 +156,13 @@ fn fill_slice(slice: &mut [u8], rng: &mut fastrand::Rng) {
     if i + size_of::<u8>() < slice.len() {
         slice[i] = rng.u8(..);
     }
+}
+
+fn database_size(path: &Path) -> u64 {
+    let mut size = 0u64;
+    for result in walkdir::WalkDir::new(path) {
+        let entry = result.unwrap();
+        size += entry.metadata().unwrap().len();
+    }
+    size
 }
