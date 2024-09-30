@@ -15,7 +15,7 @@ use fastrand::Rng;
 use rocksdb::TransactionDB;
 
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const PROFILE: Params = MEDIUM;
+const PROFILE: Params = SMALL;
 const THREAD_COUNT: usize = 1;
 
 const SMALL: Params = Params {
@@ -66,25 +66,25 @@ fn main() {
 
 fn preload<T: BenchDatabase + Send + Sync>(driver: &T) {
     let start = Instant::now();
-    thread::scope(|scope| {
-        for thread_id in 0..THREAD_COUNT {
-            scope.spawn(move || {
-                for i in 0..(PROFILE.preload_key_count / PROFILE.preload_key_per_tx_count / THREAD_COUNT) {
+        thread::scope(|scope| {
+            for thread_id in 0..THREAD_COUNT {
+                scope.spawn(move || {
                     let mut rng = create_rng(thread_id.to_u64().unwrap());
-                    let mut tx = driver.write_transaction();
-                    {
-                        let mut inserter = tx.get_inserter();
-                        for k in 0..PROFILE.preload_key_per_tx_count {
-                            let key = gen_key(&mut rng);
-                            let value = Vec::new();
-                            inserter.insert(&key, &value).unwrap();
+                    for i in 0..(PROFILE.preload_key_count / PROFILE.preload_key_per_tx_count / THREAD_COUNT) {
+                        let mut tx = driver.write_transaction();
+                        {
+                            let mut inserter = tx.get_inserter();
+                            for k in 0..PROFILE.preload_key_per_tx_count {
+                                let key = gen_key(&mut rng);
+                                let value = Vec::new();
+                                inserter.insert(&key, &value).unwrap();
+                            }
                         }
+                        tx.commit().unwrap();
                     }
-                    tx.commit().unwrap();
-                }
-            });
-        }
-    });
+                });
+            }
+        });
 
     let end = Instant::now();
     let duration = end - start;
