@@ -1,5 +1,5 @@
 use redb::{AccessGuard, ReadableTableMetadata, TableDefinition};
-use rocksdb::{Direction, IteratorMode, TransactionDB, TransactionOptions, WriteOptions};
+use rocksdb::{Direction, IteratorMode, TransactionDB, TransactionOptions, WriteOptions, OptimisticTransactionDB, OptimisticTransactionOptions};
 use sanakirja::btree::page_unsized;
 use sanakirja::{Commit, RootDb};
 use std::fs;
@@ -442,6 +442,142 @@ impl BenchIterator for HeedBenchIterator<'_> {
     }
 }
 
+///
+
+pub struct OptimisticRocksdbBenchDatabase<'a> {
+    db: &'a OptimisticTransactionDB,
+}
+
+impl<'a> crate::common::OptimisticRocksdbBenchDatabase<'a> {
+    pub fn new(db: &'a OptimisticTransactionDB) -> Self {
+        Self { db }
+    }
+}
+
+impl<'a> BenchDatabase for crate::common::OptimisticRocksdbBenchDatabase<'a> {
+    type W<'db> = crate::common::OptimisticRocksdbBenchWriteTransaction<'db>
+    where Self: 'db;
+    type R<'db> = crate::common::OptimisticRocksdbBenchReadTransaction<'db>
+    where Self: 'db;
+
+    fn db_type_name() -> &'static str {
+        "rocksdb"
+    }
+
+    fn write_transaction(&self) -> Self::W<'_> {
+        let mut write_opt = WriteOptions::new();
+
+
+        // NOTE: if we want to disable fsync on commit, we uncomment the following
+        write_opt.set_sync(false);
+
+        let mut txn_opt = OptimisticTransactionOptions::new();
+        txn_opt.set_snapshot(true);
+        let txn = self.db.transaction_opt(&write_opt, &txn_opt);
+        crate::common::OptimisticRocksdbBenchWriteTransaction { txn }
+    }
+
+    fn read_transaction(&self) -> Self::R<'_> {
+        let snapshot = self.db.snapshot();
+        crate::common::OptimisticRocksdbBenchReadTransaction { snapshot }
+    }
+}
+
+pub struct OptimisticRocksdbBenchWriteTransaction<'a> {
+    txn: rocksdb::Transaction<'a, OptimisticTransactionDB>,
+}
+
+impl<'a> BenchWriteTransaction for crate::common::OptimisticRocksdbBenchWriteTransaction<'a> {
+    type W<'txn> = crate::common::OptimisticRocksdbBenchInserter<'txn>
+    where Self: 'txn;
+
+    fn get_inserter(&mut self) -> Self::W<'_> {
+        crate::common::OptimisticRocksdbBenchInserter { txn: &self.txn }
+    }
+
+    fn commit(self) -> Result<(), ()> {
+        self.txn.commit().map_err(|e| {
+            dbg!(e);
+            return ();
+        })
+    }
+}
+
+pub struct OptimisticRocksdbBenchInserter<'a> {
+    txn: &'a rocksdb::Transaction<'a, OptimisticTransactionDB>,
+}
+
+impl BenchInserter for crate::common::OptimisticRocksdbBenchInserter<'_> {
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        self.txn.put(key, value).map_err(|e| {
+            dbg!(e);
+            return ();
+        })
+    }
+
+    fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
+        self.txn.delete(key).map_err(|_| ())
+    }
+}
+
+pub struct OptimisticRocksdbBenchReadTransaction<'db> {
+    snapshot: rocksdb::SnapshotWithThreadMode<'db, OptimisticTransactionDB>,
+}
+
+impl<'db> BenchReadTransaction for crate::common::OptimisticRocksdbBenchReadTransaction<'db> {
+    type T<'txn> = crate::common::OptimisticRocksdbBenchReader<'db, 'txn>
+    where Self: 'txn;
+
+    fn get_reader(&self) -> Self::T<'_> {
+        crate::common::OptimisticRocksdbBenchReader {
+            snapshot: &self.snapshot,
+        }
+    }
+}
+
+pub struct OptimisticRocksdbBenchReader<'db, 'txn> {
+    snapshot: &'txn rocksdb::SnapshotWithThreadMode<'db, OptimisticTransactionDB>,
+}
+
+impl<'db, 'txn> BenchReader for crate::common::OptimisticRocksdbBenchReader<'db, 'txn> {
+    type Output<'out> = Vec<u8> where Self: 'out;
+    type Iterator<'out> = crate::common::OptimisticRocksdbBenchIterator<'out>
+    where Self: 'out;
+
+    fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        self.snapshot.get(key).unwrap()
+    }
+
+    fn range_from<'a>(&'a self, key: &'a [u8]) -> Self::Iterator<'a> {
+        let iter = self
+            .snapshot
+            .iterator(IteratorMode::From(key, Direction::Forward));
+
+        crate::common::OptimisticRocksdbBenchIterator { iter }
+    }
+
+    fn len(&self) -> u64 {
+        self.snapshot.iterator(IteratorMode::Start).count() as u64
+    }
+}
+
+pub struct OptimisticRocksdbBenchIterator<'a> {
+    iter: rocksdb::DBIteratorWithThreadMode<'a, OptimisticTransactionDB>,
+}
+
+impl BenchIterator for crate::common::OptimisticRocksdbBenchIterator<'_> {
+    type Output<'out> = Box<[u8]> where Self: 'out;
+
+    fn next(&mut self) -> Option<(Self::Output<'_>, Self::Output<'_>)> {
+        self.iter.next().map(|x| {
+            let x = x.unwrap();
+            (x.0, x.1)
+        })
+    }
+}
+
+///
+
 pub struct RocksdbBenchDatabase<'a> {
     db: &'a TransactionDB,
 }
@@ -501,7 +637,10 @@ pub struct RocksdbBenchInserter<'a> {
 
 impl BenchInserter for RocksdbBenchInserter<'_> {
     fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
-        self.txn.put(key, value).map_err(|_| ())
+        self.txn.put(key, value).map_err(|e| {
+            dbg!(e);
+            return ();
+        })
     }
 
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
