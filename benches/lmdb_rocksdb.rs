@@ -46,7 +46,7 @@ fn main() {
     let rocksdb_db = rocksdb::OptimisticTransactionDB::open(&rocksdb_opts, tmpdir.path()).unwrap();
     let rocksdb_driver = OptimisticRocksdbBenchDatabase::new(&rocksdb_db);
     preload(&rocksdb_driver);
-    // benchmark(&rocksdb_driver);
+    benchmark(&rocksdb_driver);
     print_size(&tmpdir, &rocksdb_driver);
 
     // instantiate lmdb
@@ -58,7 +58,7 @@ fn main() {
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
     preload(&lmdb_driver);
-    // benchmark(&lmdb_driver);
+    benchmark(&lmdb_driver);
     print_size(&tmpdir, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
@@ -99,13 +99,13 @@ fn preload<T: BenchDatabase + Send + Sync>(driver: &T) {
 fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T) {
     let mut total_scanned_key = 0;
     let start = Instant::now();
-    for i in 0..(PROFILE.benchmark_op_count / PROFILE.benchmark_op_per_tx_count / THREAD_COUNT) {
-        thread::scope(|s| {
-            for j in 0..THREAD_COUNT {
-                s.spawn(move || {
+    thread::scope(|s| {
+        for thread_id in 0..THREAD_COUNT {
+            s.spawn(move || {
+                let mut rng = create_rng(thread_id.to_u64().unwrap());
+                for i in 0..(PROFILE.benchmark_op_count / PROFILE.benchmark_op_per_tx_count / THREAD_COUNT) {
                     let tx = driver.read_transaction();
                     {
-                        let mut rng = create_rng(j.to_u64().unwrap());
                         let reader = tx.get_reader();
                         for k in 0..PROFILE.benchmark_op_per_tx_count {
                             let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
@@ -122,10 +122,10 @@ fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T) {
                         }
                     }
                     drop(tx);
-                });
-            }
-        });
-    }
+                }
+            });
+        }
+    });
     let end = Instant::now();
     let duration = end - start;
     println!(
