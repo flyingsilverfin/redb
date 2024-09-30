@@ -15,8 +15,8 @@ use fastrand::Rng;
 use rocksdb::TransactionDB;
 
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const PROFILE: Params = SMALL;
-const THREAD_COUNT: usize = 1;
+const PROFILE: Params = MEDIUM;
+const THREAD_COUNT: usize = 8;
 
 const SMALL: Params = Params {
     preload_key_count: 1_000_000,
@@ -77,7 +77,10 @@ fn preload<T: BenchDatabase + Send + Sync>(driver: &T) {
                             for k in 0..PROFILE.preload_key_per_tx_count {
                                 let key = gen_key(&mut rng);
                                 let value = Vec::new();
-                                inserter.insert(&key, &value).unwrap();
+                                match inserter.insert(&key, &value) {
+                                    Ok(()) => {}
+                                    Err(()) => {}
+                                }
                             }
                         }
                         tx.commit().unwrap();
