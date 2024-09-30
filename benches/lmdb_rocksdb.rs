@@ -15,7 +15,7 @@ use fastrand::Rng;
 use rocksdb::TransactionDB;
 
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const PROFILE: Params = MEDIUM;
+const PROFILE: Params = BIG;
 const THREAD_COUNT: usize = 8;
 
 const SMALL: Params = Params {
@@ -30,6 +30,14 @@ const MEDIUM: Params = Params {
     preload_key_count: 10_000_000,
     preload_key_per_tx_count: 1_000,
     benchmark_op_count: 1_00_000,
+    benchmark_op_per_tx_count: 100,
+    benchmark_iter_per_op_count: 1_000,
+};
+
+const BIG: Params = Params {
+    preload_key_count: 1000_000_000,
+    preload_key_per_tx_count: 1_000,
+    benchmark_op_count: 10_000_000,
     benchmark_op_per_tx_count: 100,
     benchmark_iter_per_op_count: 1_000,
 };
