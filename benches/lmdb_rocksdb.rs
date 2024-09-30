@@ -14,15 +14,27 @@ use fastrand::Rng;
 use rocksdb::TransactionDB;
 
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const RNG_SEED: u64 = 3;
+const PROFILE: Params = SMALL;
+const THREAD_COUNT: usize = 1;
 
-const PRELOAD_KEY_COUNT: usize = 1_000_000;
-const PRELOAD_KEY_PER_TX_COUNT: usize = 1_000;
-const BENCHMARK_OP_COUNT: usize = 1_000_00;
-const BENCHMARK_OP_PER_TX_COUNT: usize = 100;
-const BENCHMARK_ITER_PER_OP_COUNT: usize = 1000;
+const SMALL: Params = Params {
+    preload_key_count: 1_000_000,
+    preload_key_per_tx_count: 1_000,
+    benchmark_op_count: 100_000,
+    benchmark_op_per_tx_count: 100,
+    benchmark_iter_per_op_count: 1_000,
+};
+
+const MEDIUM: Params = Params {
+    preload_key_count: 10_000_000,
+    preload_key_per_tx_count: 1_000,
+    benchmark_op_count: 1_00_000,
+    benchmark_op_per_tx_count: 100,
+    benchmark_iter_per_op_count: 1_000,
+};
+
 const KEY_SIZE: usize = 48;
-// const PARALLELISM: usize = 1;
+const RNG_SEED: u64 = 3;
 
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
@@ -34,76 +46,85 @@ fn main() {
     let rocksdb_tx_opts = Default::default();
     let rocksdb_db: TransactionDB = rocksdb::TransactionDB::open(&rocksdb_opts, &rocksdb_tx_opts, tmpdir.path()).unwrap();
     let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
-    let mut rocksdb_rng = create_rng();
-    preload(&mut rocksdb_rng, &rocksdb_driver);
-    benchmark(&mut rocksdb_rng, &rocksdb_driver);
+    preload(&rocksdb_driver);
+    benchmark(&rocksdb_driver);
     print_size(&tmpdir, &rocksdb_driver);
 
     // instantiate lmdb
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
         options.map_size(4096 * 1024 * 1024);
-        unsafe { options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD); }
+        options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD);
         options.open(tmpdir.path()).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
-    let mut lmdb_rng = create_rng();
-    preload(&mut lmdb_rng, &lmdb_driver);
-    benchmark(&mut lmdb_rng, &lmdb_driver);
+    preload(&lmdb_driver);
+    benchmark(&lmdb_driver);
     print_size(&tmpdir, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
 }
 
-fn preload<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
+fn preload<T: BenchDatabase + Send + Sync>(driver: &T) {
     let start = Instant::now();
-    for i in 0..(PRELOAD_KEY_COUNT / PRELOAD_KEY_PER_TX_COUNT) {
-        let mut tx = driver.write_transaction();
-        {
-            let mut inserter = tx.get_inserter();
-            for i in 0..PRELOAD_KEY_PER_TX_COUNT {
-                let key = gen_key(&mut rng);
-                let value = Vec::new();
-                inserter.insert(&key, &value).unwrap()
+    for i in 0..(PROFILE.preload_key_count / PROFILE.preload_key_per_tx_count / THREAD_COUNT) {
+        thread::scope(|s| {
+            for j in 0..THREAD_COUNT {
+                let thread = s.spawn(move || {
+                    let mut rng = create_rng();
+                    let mut tx = driver.write_transaction();
+                    {
+                        let mut inserter = tx.get_inserter();
+                        for k in 0..PROFILE.preload_key_per_tx_count {
+                            let key = gen_key(&mut rng);
+                            let value = Vec::new();
+                            inserter.insert(&key, &value).unwrap()
+                        }
+                    }
+                    tx.commit().unwrap();
+                });
             }
-        }
-        tx.commit().unwrap();
+        });
     }
     let end = Instant::now();
     let duration = end - start;
     println!(
         "{}: Preload done: loaded {} keys in {}ms",
         T::db_type_name(),
-        PRELOAD_KEY_COUNT,
+        PROFILE.preload_key_count,
         duration.as_millis()
     );
 }
 
-fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
+fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T) {
     let mut total_scanned_key = 0;
     let start = Instant::now();
-    for i in 0..(BENCHMARK_OP_COUNT / BENCHMARK_OP_PER_TX_COUNT) {
-        let tx = driver.read_transaction();
-        {
-            let reader = tx.get_reader();
-            for i in 0..BENCHMARK_OP_PER_TX_COUNT {
-                let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
-                let mut scanned_key = 0;
-                let mut iter = reader.range_from(&key);
-                for i in 0..BENCHMARK_ITER_PER_OP_COUNT {
-                    scanned_key += 1;
-                    match iter.next() {
-                        Some((_, value)) => {
-                        }
-                        None => {
-                            break;
+    for i in 0..(PROFILE.benchmark_op_count / PROFILE.benchmark_op_per_tx_count / THREAD_COUNT) {
+        thread::scope(|s| {
+            for i in 0..THREAD_COUNT {
+                let thread = s.spawn(move || {
+                    let tx = driver.read_transaction();
+                    {
+                        let mut rng = create_rng();
+                        let reader = tx.get_reader();
+                        for i in 0..PROFILE.benchmark_op_per_tx_count {
+                            let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
+                            let mut scanned_key = 0;
+                            let mut iter = reader.range_from(&key);
+                            for i in 0..PROFILE.benchmark_iter_per_op_count {
+                                scanned_key += 1;
+                                match iter.next() {
+                                    Some((_, value)) => {}
+                                    None => { break; }
+                                }
+                            }
+                            total_scanned_key += scanned_key;
                         }
                     }
-                }
-                total_scanned_key += scanned_key;
+                    drop(tx);
+                });
             }
-        }
-        drop(tx);
+        });
     }
     let end = Instant::now();
     let duration = end - start;
@@ -111,7 +132,7 @@ fn benchmark<T: BenchDatabase + Send + Sync>(mut rng: &mut Rng, driver: &T) {
         "{}: Scan done: scanned {} total entries from {} scan ops, in {}ms",
         T::db_type_name(),
         total_scanned_key,
-        BENCHMARK_OP_COUNT,
+        PROFILE.benchmark_op_count,
         duration.as_millis()
     );
 }
@@ -165,4 +186,12 @@ fn database_size(path: &Path) -> u64 {
         size += entry.metadata().unwrap().len();
     }
     size
+}
+
+struct Params {
+    preload_key_count: usize,
+    preload_key_per_tx_count: usize,
+    benchmark_op_count: usize,
+    benchmark_op_per_tx_count: usize,
+    benchmark_iter_per_op_count: usize,
 }
