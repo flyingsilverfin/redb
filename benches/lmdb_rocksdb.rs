@@ -10,11 +10,12 @@ mod common;
 use common::*;
 
 use std::time::{Duration, Instant};
+use byte_unit::rust_decimal::prelude::ToPrimitive;
 use fastrand::Rng;
 use rocksdb::TransactionDB;
 
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const PROFILE: Params = SMALL;
+const PROFILE: Params = MEDIUM;
 const THREAD_COUNT: usize = 1;
 
 const SMALL: Params = Params {
@@ -34,7 +35,6 @@ const MEDIUM: Params = Params {
 };
 
 const KEY_SIZE: usize = 48;
-const RNG_SEED: u64 = 3;
 
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
@@ -43,11 +43,10 @@ fn main() {
     // instantiate rocksdb
     let mut rocksdb_opts = rocksdb::Options::default();
     rocksdb_opts.create_if_missing(true);
-    let rocksdb_tx_opts = Default::default();
-    let rocksdb_db: TransactionDB = rocksdb::TransactionDB::open(&rocksdb_opts, &rocksdb_tx_opts, tmpdir.path()).unwrap();
-    let rocksdb_driver = RocksdbBenchDatabase::new(&rocksdb_db);
+    let rocksdb_db = rocksdb::OptimisticTransactionDB::open(&rocksdb_opts, tmpdir.path()).unwrap();
+    let rocksdb_driver = OptimisticRocksdbBenchDatabase::new(&rocksdb_db);
     preload(&rocksdb_driver);
-    benchmark(&rocksdb_driver);
+    // benchmark(&rocksdb_driver);
     print_size(&tmpdir, &rocksdb_driver);
 
     // instantiate lmdb
@@ -59,7 +58,7 @@ fn main() {
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
     preload(&lmdb_driver);
-    benchmark(&lmdb_driver);
+    // benchmark(&lmdb_driver);
     print_size(&tmpdir, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
@@ -67,25 +66,26 @@ fn main() {
 
 fn preload<T: BenchDatabase + Send + Sync>(driver: &T) {
     let start = Instant::now();
-    for i in 0..(PROFILE.preload_key_count / PROFILE.preload_key_per_tx_count / THREAD_COUNT) {
-        thread::scope(|s| {
-            for j in 0..THREAD_COUNT {
-                let thread = s.spawn(move || {
-                    let mut rng = create_rng();
+    thread::scope(|scope| {
+        for thread_id in 0..THREAD_COUNT {
+            scope.spawn(move || {
+                for i in 0..(PROFILE.preload_key_count / PROFILE.preload_key_per_tx_count / THREAD_COUNT) {
+                    let mut rng = create_rng(thread_id.to_u64().unwrap());
                     let mut tx = driver.write_transaction();
                     {
                         let mut inserter = tx.get_inserter();
                         for k in 0..PROFILE.preload_key_per_tx_count {
                             let key = gen_key(&mut rng);
                             let value = Vec::new();
-                            inserter.insert(&key, &value).unwrap()
+                            inserter.insert(&key, &value).unwrap();
                         }
                     }
                     tx.commit().unwrap();
-                });
-            }
-        });
-    }
+                }
+            });
+        }
+    });
+
     let end = Instant::now();
     let duration = end - start;
     println!(
@@ -101,13 +101,13 @@ fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T) {
     let start = Instant::now();
     for i in 0..(PROFILE.benchmark_op_count / PROFILE.benchmark_op_per_tx_count / THREAD_COUNT) {
         thread::scope(|s| {
-            for i in 0..THREAD_COUNT {
-                let thread = s.spawn(move || {
+            for j in 0..THREAD_COUNT {
+                s.spawn(move || {
                     let tx = driver.read_transaction();
                     {
-                        let mut rng = create_rng();
+                        let mut rng = create_rng(j.to_u64().unwrap());
                         let reader = tx.get_reader();
-                        for i in 0..PROFILE.benchmark_op_per_tx_count {
+                        for k in 0..PROFILE.benchmark_op_per_tx_count {
                             let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
                             let mut scanned_key = 0;
                             let mut iter = reader.range_from(&key);
@@ -142,8 +142,8 @@ fn print_size<T: BenchDatabase + Send + Sync>(tmpdir: &TempDir, _: &T) {
     println!("{}: Database size: {} bytes", T::db_type_name(), size);
 }
 
-fn create_rng() -> fastrand::Rng {
-    fastrand::Rng::with_seed(RNG_SEED)
+fn create_rng(seed: u64) -> fastrand::Rng {
+    fastrand::Rng::with_seed(seed)
 }
 
 fn gen_key(rng: &mut fastrand::Rng) -> [u8; KEY_SIZE] {
