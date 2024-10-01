@@ -81,10 +81,6 @@ name = "lmdb_benchmark"
 harness = false
 
 [[bench]]
-name = "storage_lmdb_benchmark"
-harness = false
-
-[[bench]]
 name = "large_values_benchmark"
 harness = false
 
@@ -94,4 +90,8 @@ harness = false
 
 [[bench]]
 name = "syscall_benchmark"
+harness = false
+
+[[bench]]
+name = "storage_benchmark"
 harness = false
