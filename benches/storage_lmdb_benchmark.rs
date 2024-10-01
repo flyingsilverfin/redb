@@ -22,9 +22,17 @@ fn main() {
     let tmpdir_path = args.pop().unwrap();
     let thread_count = args.pop().unwrap().parse::<usize>().unwrap();
     let op_size = OpSize::from_str(args.pop().unwrap().as_str());
+
     let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
     println!("op size: {:?}\nthread count: {}\ntmp dir: {:?}", &op_size, thread_count, &tmpdir);
 
+    rocksdb_benchmark(&op_size, thread_count, &tmpdir);
+    lmdb_benchmark(&op_size, thread_count, &tmpdir);
+
+    fs::remove_dir_all(&tmpdir).unwrap();
+}
+
+fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir: &TempDir) {
     // instantiate rocksdb
     let mut rocksdb_opts = rocksdb::Options::default();
     rocksdb_opts.create_if_missing(true);
@@ -33,7 +41,9 @@ fn main() {
     preload(&rocksdb_driver, &op_size, thread_count);
     benchmark(&rocksdb_driver, &op_size, thread_count);
     print_data_size(&tmpdir, &rocksdb_driver);
+}
 
+fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir: &TempDir) {
     // instantiate lmdb
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
@@ -45,6 +55,4 @@ fn main() {
     preload(&lmdb_driver, &op_size, thread_count);
     benchmark(&lmdb_driver, &op_size, thread_count);
     print_data_size(&tmpdir, &lmdb_driver);
-
-    fs::remove_dir_all(&tmpdir).unwrap();
 }
