@@ -2,6 +2,8 @@
 
 set -ux
 
+echo "Benchmark version: $(git rev-parse HEAD)"
+
 TMP_DIR=$1
 OP_SIZE=('s' 'm' 'b')
 THREAD_COUNT=(1 4 16)
