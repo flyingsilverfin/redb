@@ -1,5 +1,7 @@
 use byte_unit::rust_decimal::prelude::ToPrimitive;
 use std::fmt::Display;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::thread;
 use std::time::Instant;
 use tempfile::TempDir;
@@ -45,10 +47,11 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
 }
 
 pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
-    let mut total_scanned_key = 0;
+    let mut total_scanned_key = Arc::new(AtomicI32::new(0));
     let start = Instant::now();
     thread::scope(|s| {
         for thread_id in 0..thread_count {
+            let scanned_key_ref = total_scanned_key.clone();
             s.spawn(move || {
                 let mut rng = create_rng(thread_id.to_u64().unwrap());
                 for i in 0..(op_size.benchmark_op_count / op_size.benchmark_op_per_tx_count / thread_count) {
@@ -66,7 +69,7 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, t
                                     None => { break; }
                                 }
                             }
-                            total_scanned_key += scanned_key;
+                            scanned_key_ref.fetch_add(scanned_key, Ordering::SeqCst);
                         }
                     }
                     drop(tx);
@@ -79,7 +82,7 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, t
     println!(
         "{}: Scan done: scanned {} total entries from {} scan ops, in {}ms",
         T::db_type_name(),
-        total_scanned_key,
+        total_scanned_key.load(Ordering::SeqCst),
         op_size.benchmark_op_count,
         duration.as_millis()
     );
