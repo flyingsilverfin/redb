@@ -18,9 +18,6 @@ impl OpSize {
     }
 }
 
-
-
-
 //
 // predefined profiles
 //
@@ -47,4 +44,3 @@ const BIG: OpSize = OpSize {
     scan_per_tx_count: 100,
     iter_per_scan_count: 1_000,
 };
-
