@@ -8,27 +8,21 @@ use tempfile::TempDir;
 
 use crate::common::*;
 
+use crate::storage_op_size::OpSize;
+
 const KEY_SIZE: usize = 48;
 
-pub struct OpConfig {
-    pub preload_key_count: usize,
-    pub preload_key_per_tx_count: usize,
-    pub benchmark_op_count: usize,
-    pub benchmark_op_per_tx_count: usize,
-    pub benchmark_iter_per_op_count: usize,
-}
-
-pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_config: OpConfig, thread_count: usize) {
+pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
     let start = Instant::now();
     thread::scope(|scope| {
         for thread_id in 0..thread_count {
             scope.spawn(move || {
                 let mut rng = create_rng(thread_id.to_u64().unwrap());
-                for i in 0..(op_config.preload_key_count / op_config.preload_key_per_tx_count / thread_count) {
+                for i in 0..(op_size.preload_key_count / op_size.preload_key_per_tx_count / thread_count) {
                     let mut tx = driver.write_transaction();
                     {
                         let mut inserter = tx.get_inserter();
-                        for k in 0..op_config.preload_key_per_tx_count {
+                        for k in 0..op_size.preload_key_per_tx_count {
                             let key = gen_key(&mut rng);
                             let value = Vec::new();
                             match inserter.insert(&key, &value) {
@@ -48,27 +42,27 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_config: OpConfig, 
     println!(
         "{}: Preload done: loaded {} keys in {}ms",
         T::db_type_name(),
-        op_config.preload_key_count,
+        op_size.preload_key_count,
         duration.as_millis()
     );
 }
 
-pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_config: OpConfig, thread_count: usize) {
+pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
     let mut total_scanned_key = 0;
     let start = Instant::now();
     thread::scope(|s| {
         for thread_id in 0..thread_count {
             s.spawn(move || {
                 let mut rng = create_rng(thread_id.to_u64().unwrap());
-                for i in 0..(op_config.benchmark_op_count / op_config.benchmark_op_per_tx_count / thread_count) {
+                for i in 0..(op_size.benchmark_op_count / op_size.benchmark_op_per_tx_count / thread_count) {
                     let tx = driver.read_transaction();
                     {
                         let reader = tx.get_reader();
-                        for k in 0..op_config.benchmark_op_per_tx_count {
+                        for k in 0..op_size.benchmark_op_per_tx_count {
                             let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
                             let mut scanned_key = 0;
                             let mut iter = reader.range_from(&key);
-                            for i in 0..op_config.benchmark_iter_per_op_count {
+                            for i in 0..op_size.benchmark_iter_per_op_count {
                                 scanned_key += 1;
                                 match iter.next() {
                                     Some((_, value)) => {}
@@ -89,7 +83,7 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_config: OpConfig
         "{}: Scan done: scanned {} total entries from {} scan ops, in {}ms",
         T::db_type_name(),
         total_scanned_key,
-        op_config.benchmark_op_count,
+        op_size.benchmark_op_count,
         duration.as_millis()
     );
 }

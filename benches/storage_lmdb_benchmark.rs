@@ -1,5 +1,6 @@
 use byte_unit::rust_decimal::prelude::ToPrimitive;
 use heed::EnvFlags;
+use std::env;
 use std::fmt::Display;
 use std::fs;
 use tempfile::TempDir;
@@ -7,24 +8,28 @@ use tempfile::TempDir;
 mod common;
 use common::*;
 
-mod storage_common;
-use storage_common::*;
+mod storage_step;
+use storage_step::*;
+use crate::storage_op_size::OpSize;
 
-const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const PROFILE: OpConfig = SMALL;
-const THREAD_COUNT: usize = 8;
+mod storage_op_size;
 
 fn main() {
-    let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
-    println!("Using benchmark dir: {:?}", &tmpdir);
+    let mut args: Vec<String> = env::args().collect();
+    args.pop().unwrap(); // pop '--bench'
+    let tmpdir_path = args.pop().unwrap();
+    let thread_count = args.pop().unwrap().parse::<usize>().unwrap();
+    let op_size = OpSize::from_str(args.pop().unwrap().as_str());
+    let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
+    println!("op size: {:?}\nthread count: {}\ntmp dir: {:?}", &op_size, thread_count, &tmpdir);
 
     // instantiate rocksdb
     let mut rocksdb_opts = rocksdb::Options::default();
     rocksdb_opts.create_if_missing(true);
     let rocksdb_db = rocksdb::OptimisticTransactionDB::open(&rocksdb_opts, tmpdir.path()).unwrap();
     let rocksdb_driver = OptimisticRocksdbBenchDatabase::new(&rocksdb_db);
-    preload(&rocksdb_driver, PROFILE, THREAD_COUNT);
-    benchmark(&rocksdb_driver, PROFILE, THREAD_COUNT);
+    preload(&rocksdb_driver, &op_size, thread_count);
+    benchmark(&rocksdb_driver, &op_size, thread_count);
     print_data_size(&tmpdir, &rocksdb_driver);
 
     // instantiate lmdb
@@ -35,36 +40,9 @@ fn main() {
         options.open(tmpdir.path()).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
-    preload(&lmdb_driver, PROFILE, THREAD_COUNT);
-    benchmark(&lmdb_driver, PROFILE, THREAD_COUNT);
+    preload(&lmdb_driver, &op_size, thread_count);
+    benchmark(&lmdb_driver, &op_size, thread_count);
     print_data_size(&tmpdir, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
 }
-
-//
-// predefined profiles
-//
-const SMALL: OpConfig = OpConfig {
-    preload_key_count: 1_000_000,
-    preload_key_per_tx_count: 1_000,
-    benchmark_op_count: 100_000,
-    benchmark_op_per_tx_count: 100,
-    benchmark_iter_per_op_count: 1_000,
-};
-
-const MEDIUM: OpConfig = OpConfig {
-    preload_key_count: 10_000_000,
-    preload_key_per_tx_count: 1_000,
-    benchmark_op_count: 1_00_000,
-    benchmark_op_per_tx_count: 100,
-    benchmark_iter_per_op_count: 1_000,
-};
-
-const BIG: OpConfig = OpConfig {
-    preload_key_count: 1000_000_000,
-    preload_key_per_tx_count: 1_000,
-    benchmark_op_count: 10_000_000,
-    benchmark_op_per_tx_count: 100,
-    benchmark_iter_per_op_count: 1_000,
-};
