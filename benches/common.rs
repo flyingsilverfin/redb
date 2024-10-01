@@ -381,11 +381,17 @@ pub struct HeedBenchInserter<'txn, 'db> {
 
 impl BenchInserter for HeedBenchInserter<'_, '_> {
     fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
-        self.db.put(self.txn, key, value).map_err(|_| ())
+        self.db.put(self.txn, key, value).map_err(|e| {
+            dbg!(e);
+            return ();
+        })
     }
 
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
-        self.db.delete(self.txn, key).map(|_| ()).map_err(|_| ())
+        self.db.delete(self.txn, key).map(|_| ()).map_err(|e| {
+            dbg!(e);
+            return ();
+        })
     }
 }
 
