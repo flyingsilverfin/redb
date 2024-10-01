@@ -1,48 +1,17 @@
-use std::env::current_dir;
+use byte_unit::rust_decimal::prelude::ToPrimitive;
+use heed::EnvFlags;
 use std::mem::size_of;
 use std::path::Path;
-use std::sync::Arc;
-use std::{fs, process, thread};
-use heed::EnvFlags;
-use tempfile::{NamedTempFile, TempDir};
+use std::time::Instant;
+use std::{fs, thread};
+use tempfile::TempDir;
 
 mod common;
 use common::*;
 
-use std::time::{Duration, Instant};
-use byte_unit::rust_decimal::prelude::ToPrimitive;
-use fastrand::Rng;
-use rocksdb::TransactionDB;
-
 const DATA_DIR: &str = "/tmp"; //"/mnt/balanced-pd/tmp";
-const PROFILE: Params = BIG;
+const PROFILE: Params = SMALL;
 const THREAD_COUNT: usize = 8;
-
-const SMALL: Params = Params {
-    preload_key_count: 1_000_000,
-    preload_key_per_tx_count: 1_000,
-    benchmark_op_count: 100_000,
-    benchmark_op_per_tx_count: 100,
-    benchmark_iter_per_op_count: 1_000,
-};
-
-const MEDIUM: Params = Params {
-    preload_key_count: 10_000_000,
-    preload_key_per_tx_count: 1_000,
-    benchmark_op_count: 1_00_000,
-    benchmark_op_per_tx_count: 100,
-    benchmark_iter_per_op_count: 1_000,
-};
-
-const BIG: Params = Params {
-    preload_key_count: 1000_000_000,
-    preload_key_per_tx_count: 1_000,
-    benchmark_op_count: 10_000_000,
-    benchmark_op_per_tx_count: 100,
-    benchmark_iter_per_op_count: 1_000,
-};
-
-const KEY_SIZE: usize = 48;
 
 fn main() {
     let tmpdir = TempDir::new_in(DATA_DIR).unwrap();
@@ -70,6 +39,50 @@ fn main() {
     print_size(&tmpdir, &lmdb_driver);
 
     fs::remove_dir_all(&tmpdir).unwrap();
+}
+
+//
+// predefined profiles
+//
+const SMALL: Params = Params {
+    preload_key_count: 1_000_000,
+    preload_key_per_tx_count: 1_000,
+    benchmark_op_count: 100_000,
+    benchmark_op_per_tx_count: 100,
+    benchmark_iter_per_op_count: 1_000,
+};
+
+const MEDIUM: Params = Params {
+    preload_key_count: 10_000_000,
+    preload_key_per_tx_count: 1_000,
+    benchmark_op_count: 1_00_000,
+    benchmark_op_per_tx_count: 100,
+    benchmark_iter_per_op_count: 1_000,
+};
+
+const BIG: Params = Params {
+    preload_key_count: 1000_000_000,
+    preload_key_per_tx_count: 1_000,
+    benchmark_op_count: 10_000_000,
+    benchmark_op_per_tx_count: 100,
+    benchmark_iter_per_op_count: 1_000,
+};
+
+//
+// internal configurations
+//
+const KEY_SIZE: usize = 48;
+
+//
+// code
+//
+
+struct Params {
+    preload_key_count: usize,
+    preload_key_per_tx_count: usize,
+    benchmark_op_count: usize,
+    benchmark_op_per_tx_count: usize,
+    benchmark_iter_per_op_count: usize,
 }
 
 fn preload<T: BenchDatabase + Send + Sync>(driver: &T) {
@@ -197,12 +210,4 @@ fn database_size(path: &Path) -> u64 {
         size += entry.metadata().unwrap().len();
     }
     size
-}
-
-struct Params {
-    preload_key_count: usize,
-    preload_key_per_tx_count: usize,
-    benchmark_op_count: usize,
-    benchmark_op_per_tx_count: usize,
-    benchmark_iter_per_op_count: usize,
 }
