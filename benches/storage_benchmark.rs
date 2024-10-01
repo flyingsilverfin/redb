@@ -44,7 +44,7 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
     let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
-        options.map_size(4096 * 1024 * 1024);
+        options.map_size(500 * 1024 * 1024 * 1024); // 500GB
         options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD);
         options.open(tmpdir.path()).unwrap()
     };
