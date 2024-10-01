@@ -81,7 +81,7 @@ name = "lmdb_benchmark"
 harness = false
 
 [[bench]]
-name = "lmdb_rocksdb"
+name = "storage_lmdb_benchmark"
 harness = false
 
 [[bench]]
