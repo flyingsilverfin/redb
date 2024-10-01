@@ -6,13 +6,15 @@ use std::fs;
 use tempfile::TempDir;
 
 mod common;
-use common::*;
-
+mod storage_common;
+mod storage_op_size;
 mod storage_step;
+
+use common::*;
 use storage_step::*;
 use crate::storage_op_size::OpSize;
 
-mod storage_op_size;
+
 
 fn main() {
     let mut args: Vec<String> = env::args().collect();
