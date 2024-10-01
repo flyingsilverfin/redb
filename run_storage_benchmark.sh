@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -x
+
 cargo bench --bench storage_benchmark -- s 1 /tmp/ > s-1.md
 cargo bench --bench storage_benchmark -- s 4 /tmp/ > s-4.md
 cargo bench --bench storage_benchmark -- s 16 /tmp/ > s-16.md
