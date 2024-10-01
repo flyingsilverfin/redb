@@ -23,17 +23,15 @@ fn main() {
     let thread_count = args.pop().unwrap().parse::<usize>().unwrap();
     let op_size = OpSize::from_str(args.pop().unwrap().as_str());
 
-    let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
-    println!("op size: {:?}\nthread count: {}\ntmp dir: {:?}", &op_size, thread_count, &tmpdir);
+    println!("op size: {:?}\nthread count: {}\ntmp dir: {:?}", &op_size, thread_count, &tmpdir_path);
 
-    rocksdb_benchmark(&op_size, thread_count, &tmpdir);
-    lmdb_benchmark(&op_size, thread_count, &tmpdir);
+    rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
+    lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
 
-    fs::remove_dir_all(&tmpdir).unwrap();
 }
 
-fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir: &TempDir) {
-    // instantiate rocksdb
+fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
+    let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
     let mut rocksdb_opts = rocksdb::Options::default();
     rocksdb_opts.create_if_missing(true);
     let rocksdb_db = rocksdb::OptimisticTransactionDB::open(&rocksdb_opts, tmpdir.path()).unwrap();
@@ -41,10 +39,11 @@ fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir: &TempDir) {
     preload(&rocksdb_driver, &op_size, thread_count);
     benchmark(&rocksdb_driver, &op_size, thread_count);
     print_data_size(&tmpdir, &rocksdb_driver);
+    fs::remove_dir_all(&tmpdir).unwrap();
 }
 
-fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir: &TempDir) {
-    // instantiate lmdb
+fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
+    let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
         options.map_size(4096 * 1024 * 1024);
@@ -55,4 +54,5 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir: &TempDir) {
     preload(&lmdb_driver, &op_size, thread_count);
     benchmark(&lmdb_driver, &op_size, thread_count);
     print_data_size(&tmpdir, &lmdb_driver);
+    fs::remove_dir_all(&tmpdir).unwrap();
 }
