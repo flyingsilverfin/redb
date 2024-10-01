@@ -37,14 +37,14 @@ fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String
     let dir = Path::new(tmpdir_path);
     let mut bb = rocksdb::BlockBasedOptions::default();
     bb.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024)); // TODO
-    // setFilterPolicy non-existent
+    // setFilterPolicy method does non-exist on the driver
     bb.set_partition_filters(true);
     bb.set_index_type(rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
     bb.set_optimize_filters_for_memory(true);
     bb.set_pin_top_level_index_and_filter(true);
     bb.set_pin_l0_filter_and_index_blocks_in_cache(true);
     bb.set_cache_index_and_filter_blocks(true);
-    // setCacheIndexAndFilterBlocksWithHighPriority non-existen
+    // setCacheIndexAndFilterBlocksWithHighPriority method does non-exist on the driver
     let mut rocksdb_opts = rocksdb::Options::default();
     rocksdb_opts.create_if_missing(true);
     rocksdb_opts.set_max_subcompactions(thread_count.to_u32().unwrap());
