@@ -14,8 +14,6 @@ use common::*;
 use storage_step::*;
 use crate::storage_op_size::OpSize;
 
-
-
 fn main() {
     let mut args: Vec<String> = env::args().collect();
     args.pop().unwrap(); // pop '--bench'
