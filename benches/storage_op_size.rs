@@ -13,8 +13,9 @@ impl OpSize {
             "s" => SMALL,
             "m" => MEDIUM,
             "m2" => MEDIUM2,
+            "m3" => MEDIUM3,
             "b" => BIG,
-            x => panic!("must be either 's', 'm', 'm2', or 'b', got {}", x)
+            x => panic!("must be either 's', 'm', 'm2', 'm3', or 'b', got {}", x)
         }
     }
 }
@@ -45,6 +46,15 @@ const MEDIUM2: OpSize = OpSize {
     scan_per_tx_count: 100,
     iter_per_scan_count: 1_000,
 };
+
+const MEDIUM3: OpSize = OpSize {
+    insert_key_total_count: 300_000_000,
+    insert_key_per_tx_count: 1_000,
+    scan_total_count: 3_000_000,
+    scan_per_tx_count: 100,
+    iter_per_scan_count: 1_000,
+};
+
 
 const BIG: OpSize = OpSize {
     insert_key_total_count: 1000_000_000,
