@@ -3,6 +3,7 @@ use heed::EnvFlags;
 use std::env;
 use std::fmt::Display;
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
 
 mod common;
@@ -23,7 +24,7 @@ fn main() {
 
     println!("op size: {:?}\nthread count: {}\ntmp dir: {:?}", &op_size, thread_count, &tmpdir_path);
 
-    rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
+    // rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
     lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
 
 }
@@ -41,16 +42,17 @@ fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String
 }
 
 fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
-    let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
+    // let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
         options.map_size(125 * 1024 * 1024 * 1024); // 125GB (size of the benchmark VM memory)
         options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD);
-        options.open(tmpdir.path()).unwrap()
+        // options.open(tmpdir.path()).unwrap()
+        options.open(Path::new(tmpdir_path)).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
     preload(&lmdb_driver, &op_size, thread_count);
     benchmark(&lmdb_driver, &op_size, thread_count);
-    print_data_size(&tmpdir, &lmdb_driver);
-    fs::remove_dir_all(&tmpdir).unwrap();
+    // print_data_size(&tmpdir, &lmdb_driver);
+    // fs::remove_dir_all(&tmpdir).unwrap();
 }
