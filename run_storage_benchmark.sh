@@ -2,13 +2,21 @@
 
 set -ux
 
-TMP_DIR=$1
-OP_SIZE=('s' 'm' 'b')
-THREAD_COUNT=(1 4 16)
+DIR=$1
+THREAD_COUNT=(1)
 
-for op_size in "${OP_SIZE[@]}"; do
-  for thread_count in "${THREAD_COUNT[@]}"; do
-    echo "Benchmark version: $(git rev-parse HEAD)" > "$op_size-$thread_count.md"
-    RUST_BACKTRACE=full cargo bench --bench storage_benchmark -- "$op_size" "$thread_count" "$TMP_DIR" >> "$op_size-$thread_count.md"
+mkdir -p $DIR
+
+for thread_count in "${THREAD_COUNT[@]}"; do
+  out_file="${@:2}-$thread_count.md"
+  echo "Deleting $out_file if it exists, then starting benchmarks"
+  rm "$out_file"
+  echo "Benchmark version: $(git rev-parse HEAD)" >> "$out_file"
+  echo >> "$out_file"
+  for op_size in "${@:2}"; do
+    echo "Operation: {op_size}"
+    date >> "$out_file"
+    RUST_BACKTRACE=full cargo bench --bench storage_benchmark -- "$op_size" "$thread_count" "$DIR" >> "$out_file"
+    echo >> "$out_file"
   done
 done

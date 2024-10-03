@@ -1,5 +1,6 @@
 use byte_unit::rust_decimal::prelude::ToPrimitive;
 use std::fmt::Display;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::thread;
@@ -16,11 +17,11 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
     thread::scope(|scope| {
         for thread_id in 0..thread_count {
             scope.spawn(move || {
-                let mut rng = create_rng(thread_id.to_u64().unwrap());
+                let mut rng = create_rng();
                 let mut last_printed = Instant::now();
                 let print_frequency_sec = Duration::new(2, 0);
+                let mut transactions = 0;
                 for _ in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
-                    let commit_start = Instant::now();
                     let mut tx = driver.write_transaction();
                     {
                         let mut inserter = tx.get_inserter();
@@ -34,17 +35,20 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
                         }
                     }
                     tx.commit().unwrap();
-                    let commit_duration = Instant::now() - commit_start;
-                    if (Instant::now() - last_printed) > print_frequency_sec {
-                        let key_per_sec = op_size.insert_key_total_count.to_f64().unwrap() / (commit_duration.as_millis().to_f64().unwrap() / 1000.0);
+                    transactions += 1;
+                    let time_since_last_print = Instant::now() - last_printed;
+                    if time_since_last_print > print_frequency_sec {
+                        let keys = transactions * op_size.insert_key_per_tx_count;
+                        let key_per_sec = keys.to_f64().unwrap() / (time_since_last_print.as_nanos().to_f64().unwrap() / 1000_000_000.0);
                         println!(
                             "thread {}: insertion of {} keys took {}ms ({} key/s)",
                             thread_id,
-                            op_size.insert_key_total_count,
-                            commit_duration.as_millis(),
-                            key_per_sec
+                            keys,
+                            time_since_last_print.as_millis(),
+                            key_per_sec as u64
                         );
                         last_printed = Instant::now();
+                        transactions = 0;
                     }
                 }
             });
@@ -68,7 +72,7 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, t
         for thread_id in 0..thread_count {
             let scanned_key_ref = total_scanned_key.clone();
             s.spawn(move || {
-                let mut rng = create_rng(thread_id.to_u64().unwrap());
+                let mut rng = create_rng();
                 for i in 0..(op_size.scan_total_count / op_size.scan_per_tx_count / thread_count) {
                     let tx = driver.read_transaction();
                     {
@@ -103,7 +107,7 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, t
     );
 }
 
-pub fn print_data_size<T: BenchDatabase + Send + Sync>(tmpdir: &TempDir, _: &T) {
-    let size = database_size(tmpdir.path());
+pub fn print_data_size<T: BenchDatabase + Send + Sync>(path: &Path, _: &T) {
+    let size = database_size(path);
     println!("{}: Database size: {} bytes", T::db_type_name(), size);
 }

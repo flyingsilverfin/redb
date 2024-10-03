@@ -3,8 +3,9 @@ use std::path::Path;
 
 const KEY_SIZE: usize = 48;
 
-pub fn create_rng(seed: u64) -> fastrand::Rng {
-    fastrand::Rng::with_seed(seed)
+pub fn create_rng() -> fastrand::Rng {
+    // fastrand::Rng::with_seed(seed)
+    fastrand::Rng::new()
 }
 
 pub fn gen_key(rng: &mut fastrand::Rng) -> [u8; KEY_SIZE] {
@@ -47,4 +48,21 @@ pub fn database_size(path: &Path) -> u64 {
         size += entry.metadata().unwrap().len();
     }
     size
+}
+
+use sysinfo::{
+    Components, Disks, Networks, System,
+};
+
+pub fn available_disk() -> u64 {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    let disks = Disks::new_with_refreshed_list();
+    let disk = &disks.list()[0];
+    let bytes = disk.available_space();
+
+    // round to 16k multiple for convenience
+    const KB_16: u64 = 4096 * 4;
+    let multiples = bytes / KB_16;
+    multiples * KB_16
 }
