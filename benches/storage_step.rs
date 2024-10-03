@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use fastrand::Rng;
 use tempfile::TempDir;
 
 use crate::common::*;
@@ -18,45 +19,44 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
     let start = Instant::now();
     thread::scope(|scope| {
         for thread_id in 0..thread_count {
-            scope.spawn(move || {
-                let mut rng = create_rng();
-                let mut last_printed = Instant::now();
-                let mut transactions = 0;
-                for _ in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
-                    let mut tx = driver.write_transaction();
-                    {
-                        let mut inserter = tx.get_inserter();
-                        for _ in 0..op_size.insert_key_per_tx_count {
-                            let key = gen_key(&mut rng);
-                            let value = Vec::new();
-                            match inserter.insert(&key, &value) {
-                                Ok(()) => {}
-                                Err(()) => {}
-                            }
-                        }
-                    }
-                    tx.commit().unwrap();
-                    transactions += 1;
-                    let time_since_last_print = Instant::now() - last_printed;
-                    if time_since_last_print > PRINT_FREQUENCY_SEC {
-                        print_insertion_speed(op_size, thread_id, transactions, time_since_last_print);
-                        last_printed = Instant::now();
-                        transactions = 0;
-                    }
-                }
-            });
+            scope.spawn(move || preload_thread(driver, op_size, thread_count, thread_id));
         }
     });
-
     let end = Instant::now();
     let duration = end - start;
-    println!(
-        "{}: Preload done: loaded {} keys in {}ms ({} key/s).",
-        T::db_type_name(),
-        op_size.insert_key_total_count,
-        duration.as_millis(),
-        (op_size.insert_key_total_count.to_f64().unwrap() / (duration.as_nanos().to_f64().unwrap() / 1000_000_000.0)) as u64,
-    );
+    print_preload_stats::<T>(op_size, duration);
+}
+
+fn preload_thread<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize, thread_id: usize) {
+    let mut rng = create_rng();
+    let mut last_printed = Instant::now();
+    let mut transactions = 0;
+    for _ in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
+        insert_keys(driver, op_size, &mut rng);
+        transactions += 1;
+        let time_since_last_print = Instant::now() - last_printed;
+        if time_since_last_print > PRINT_FREQUENCY_SEC {
+            print_insertion_speed(op_size, thread_id, transactions, time_since_last_print);
+            last_printed = Instant::now();
+            transactions = 0;
+        }
+    }
+}
+
+fn insert_keys<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, mut rng: &mut Rng) {
+    let mut tx = driver.write_transaction();
+    {
+        let mut inserter = tx.get_inserter();
+        for _ in 0..op_size.insert_key_per_tx_count {
+            let key = gen_key(&mut rng);
+            let value = Vec::new();
+            match inserter.insert(&key, &value) {
+                Ok(()) => {}
+                Err(()) => {}
+            }
+        }
+    }
+    tx.commit().unwrap();
 }
 
 pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
@@ -103,6 +103,16 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, t
         T::db_type_name(),
         op_size.scan_total_count,
         duration.as_millis(),
+    );
+}
+
+fn print_preload_stats<T: BenchDatabase + Send + Sync>(op_size: &OpSize, duration: Duration) {
+    println!(
+        "{}: Preload done: loaded {} keys in {}ms ({} key/s).",
+        T::db_type_name(),
+        op_size.insert_key_total_count,
+        duration.as_millis(),
+        (op_size.insert_key_total_count.to_f64().unwrap() / (duration.as_nanos().to_f64().unwrap() / 1000_000_000.0)) as u64,
     );
 }
 
