@@ -4,6 +4,7 @@ use std::env;
 use std::fmt::Display;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use tempfile::TempDir;
 
 mod common;
@@ -26,7 +27,8 @@ fn main() {
     println!("op size: {:?}\nthread count: {}\ndir: {:?}", &op_size, thread_count, &tmpdir_path);
 
     // rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
-    lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
+    // lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
+    redb_benchmark(&op_size, thread_count, &tmpdir_path);
 
 }
 
@@ -56,4 +58,28 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
     preload_step(&lmdb_driver, &op_size, thread_count);
     scan_step(&lmdb_driver, &op_size, thread_count);
     print_data_size(&dir, &lmdb_driver);
+}
+
+
+fn redb_benchmark(op_size: &OpSize, thread_count: usize, path: &String) {
+    let dir = Path::new(path).join("redb");
+    let mut db = redb::Database::builder()
+        .set_cache_size(4 * 1024 * 1024 * 1024)
+        .create(&dir)
+        .unwrap();
+    let table = RedbBenchDatabase::new(&db);
+    preload_step(&table, &op_size, thread_count);
+    println!("Reading without compacting...");
+    scan_step(&table, &op_size, thread_count);
+
+    let start = Instant::now();
+    db.compact().unwrap();
+    let end = Instant::now();
+    let duration = end - start;
+    println!("redb: Compacted in {}ms", duration.as_millis());
+
+    let table = RedbBenchDatabase::new(&db);
+    println!("Reading after compacting...");
+    scan_step(&table, &op_size, thread_count);
+    print_data_size(&dir, &table);
 }
