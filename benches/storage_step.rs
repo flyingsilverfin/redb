@@ -15,11 +15,11 @@ use crate::storage_op_size::OpSize;
 
 const PRINT_FREQUENCY_SEC: Duration = Duration::new(2, 0);
 
-pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
+pub fn preload_step<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
     let start = Instant::now();
     thread::scope(|scope| {
         for thread_id in 0..thread_count {
-            scope.spawn(move || preload_thread(driver, op_size, thread_count, thread_id));
+            scope.spawn(move || preload_step_single_thread(driver, op_size, thread_count, thread_id));
         }
     });
     let end = Instant::now();
@@ -27,7 +27,7 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
     print_preload_stats::<T>(op_size, duration);
 }
 
-fn preload_thread<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize, thread_id: usize) {
+fn preload_step_single_thread<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize, thread_id: usize) {
     let mut rng = create_rng();
     let mut last_printed = Instant::now();
     let mut transactions = 0;
@@ -59,51 +59,52 @@ fn insert_keys<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, mut
     tx.commit().unwrap();
 }
 
-pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
+pub fn scan_step<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize) {
     let start = Instant::now();
     thread::scope(|s| {
         for thread_id in 0..thread_count {
-            s.spawn(move || {
-                let mut last_printed = Instant::now();
-                let mut transactions = 0;
-                let mut rng = create_rng();
-                for _ in 0..(op_size.scan_total_count / op_size.scan_per_tx_count / thread_count) {
-                    let tx = driver.read_transaction();
-                    {
-                        let reader = tx.get_reader();
-                        for _ in 0..op_size.scan_per_tx_count {
-                            let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
-                            let mut scanned_key = 0;
-                            let mut iter = reader.range_from(&key);
-                            for i in 0..op_size.iter_per_scan_count {
-                                scanned_key += 1;
-                                match iter.next() {
-                                    Some((_, value)) => {}
-                                    None => { break; }
-                                }
-                            }
-                        }
-                    }
-                    drop(tx);
-                    transactions += 1;
-                    let time_since_last_print = Instant::now() - last_printed;
-                    if time_since_last_print > PRINT_FREQUENCY_SEC {
-                        print_scan_speed(op_size, thread_id, transactions, time_since_last_print);
-                        last_printed = Instant::now();
-                        transactions = 0;
-                    }
-                }
-            });
+            s.spawn(move || scan_step_single_thread(driver, op_size, thread_count, thread_id));
         }
     });
     let end = Instant::now();
     let duration = end - start;
-    println!(
-        "{}: Scan done: {} scan ops in {}ms",
-        T::db_type_name(),
-        op_size.scan_total_count,
-        duration.as_millis(),
-    );
+    print_scan_stats::<T>(op_size, duration);
+}
+
+fn scan_step_single_thread<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize, thread_id: usize) {
+    let mut last_printed = Instant::now();
+    let mut transactions = 0;
+    let mut rng = create_rng();
+    for _ in 0..(op_size.scan_total_count / op_size.scan_per_tx_count / thread_count) {
+        scan_keys(driver, op_size, &mut rng);
+        transactions += 1;
+        let time_since_last_print = Instant::now() - last_printed;
+        if time_since_last_print > PRINT_FREQUENCY_SEC {
+            print_scan_speed(op_size, thread_id, transactions, time_since_last_print);
+            last_printed = Instant::now();
+            transactions = 0;
+        }
+    }
+}
+
+fn scan_keys<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, mut rng: &mut Rng) {
+    let tx = driver.read_transaction();
+    {
+        let reader = tx.get_reader();
+        for _ in 0..op_size.scan_per_tx_count {
+            let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
+            let mut scanned_key = 0;
+            let mut iter = reader.range_from(&key);
+            for i in 0..op_size.iter_per_scan_count {
+                scanned_key += 1;
+                match iter.next() {
+                    Some((_, value)) => {}
+                    None => { break; }
+                }
+            }
+        }
+    }
+    drop(tx);
 }
 
 fn print_preload_stats<T: BenchDatabase + Send + Sync>(op_size: &OpSize, duration: Duration) {
@@ -125,6 +126,15 @@ fn print_insertion_speed(op_size: &OpSize, thread_id: usize, mut transactions: u
         keys,
         time_since_last_print.as_millis(),
         key_per_sec as u64
+    );
+}
+
+fn print_scan_stats<T: BenchDatabase + Send + Sync>(op_size: &OpSize, duration: Duration) {
+    println!(
+        "{}: Scan done: {} scan ops in {}ms",
+        T::db_type_name(),
+        op_size.scan_total_count,
+        duration.as_millis(),
     );
 }
 

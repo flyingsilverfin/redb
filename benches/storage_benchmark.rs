@@ -38,8 +38,8 @@ fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String
     rocksdb_opts.create_if_missing(true);
     let rocksdb_db = rocksdb::OptimisticTransactionDB::open(&rocksdb_opts, dir).unwrap();
     let rocksdb_driver = OptimisticRocksdbBenchDatabase::new(&rocksdb_db);
-    preload(&rocksdb_driver, &op_size, thread_count);
-    benchmark(&rocksdb_driver, &op_size, thread_count);
+    preload_step(&rocksdb_driver, &op_size, thread_count);
+    scan_step(&rocksdb_driver, &op_size, thread_count);
     print_data_size(&dir, &rocksdb_driver);
 }
 
@@ -53,7 +53,7 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
         options.open(dir).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
-    preload(&lmdb_driver, &op_size, thread_count);
-    benchmark(&lmdb_driver, &op_size, thread_count);
+    preload_step(&lmdb_driver, &op_size, thread_count);
+    scan_step(&lmdb_driver, &op_size, thread_count);
     print_data_size(&dir, &lmdb_driver);
 }
