@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 use crate::common::*;
@@ -17,11 +17,14 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
         for thread_id in 0..thread_count {
             scope.spawn(move || {
                 let mut rng = create_rng(thread_id.to_u64().unwrap());
-                for i in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
+                let mut last_printed = Instant::now();
+                let print_frequency_sec = Duration::new(2, 0);
+                for _ in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
+                    let commit_start = Instant::now();
                     let mut tx = driver.write_transaction();
                     {
                         let mut inserter = tx.get_inserter();
-                        for k in 0..op_size.insert_key_per_tx_count {
+                        for _ in 0..op_size.insert_key_per_tx_count {
                             let key = gen_key(&mut rng);
                             let value = Vec::new();
                             match inserter.insert(&key, &value) {
@@ -31,6 +34,18 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
                         }
                     }
                     tx.commit().unwrap();
+                    let commit_duration = Instant::now() - commit_start;
+                    if (Instant::now() - last_printed) > print_frequency_sec {
+                        let key_per_sec = op_size.insert_key_total_count.to_f64().unwrap() / (commit_duration.as_millis().to_f64().unwrap() / 1000.0);
+                        println!(
+                            "thread {}: insertion of {} keys took {}ms ({} key/s)",
+                            thread_id,
+                            op_size.insert_key_total_count,
+                            commit_duration.as_millis(),
+                            key_per_sec
+                        );
+                        last_printed = Instant::now();
+                    }
                 }
             });
         }
