@@ -51,10 +51,11 @@ pub fn preload<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thr
     let end = Instant::now();
     let duration = end - start;
     println!(
-        "{}: Preload done: loaded {} keys in {}ms",
+        "{}: Preload done: loaded {} keys in {}ms ({} key/s).",
         T::db_type_name(),
         op_size.insert_key_total_count,
-        duration.as_millis()
+        duration.as_millis(),
+        (op_size.insert_key_total_count.to_f64().unwrap() / (duration.as_nanos().to_f64().unwrap() / 1000_000_000.0)) as u64,
     );
 }
 
@@ -101,7 +102,7 @@ pub fn benchmark<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, t
         "{}: Scan done: {} scan ops in {}ms",
         T::db_type_name(),
         op_size.scan_total_count,
-        duration.as_millis()
+        duration.as_millis(),
     );
 }
 
@@ -129,7 +130,8 @@ fn print_scan_speed(op_size: &OpSize, thread_id: usize, mut transactions: usize,
     );
 }
 
-pub fn print_data_size<T: BenchDatabase + Send + Sync>(path: &Path, _: &T) {
+pub fn print_data_size<T: BenchDatabase + Send + Sync>(path: &Path, driver: &T) {
     let size = database_size(path);
     println!("{}: Database size: {} bytes", T::db_type_name(), size);
+    println!("{}: Database keys: {} keys", T::db_type_name(), T::key_count(driver));
 }

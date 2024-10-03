@@ -23,6 +23,8 @@ pub trait BenchDatabase {
     fn write_transaction(&self) -> Self::W<'_>;
 
     fn read_transaction(&self) -> Self::R<'_>;
+
+    fn key_count(&self) -> u64;
 }
 
 pub trait BenchWriteTransaction {
@@ -103,6 +105,10 @@ impl<'a> BenchDatabase for RedbBenchDatabase<'a> {
     fn read_transaction(&self) -> Self::R<'_> {
         let txn = self.db.begin_read().unwrap();
         RedbBenchReadTransaction { txn }
+    }
+
+    fn key_count(&self) -> u64 {
+        self.read_transaction().get_reader().len()
     }
 }
 
@@ -232,6 +238,10 @@ impl<'a> BenchDatabase for SledBenchDatabase<'a> {
     fn read_transaction(&self) -> Self::R<'_> {
         SledBenchReadTransaction { db: self.db }
     }
+
+    fn key_count(&self) -> u64 {
+        self.db.len() as u64
+    }
 }
 
 pub struct SledBenchReadTransaction<'db> {
@@ -351,6 +361,11 @@ impl<'a> BenchDatabase for HeedBenchDatabase<'a> {
     fn read_transaction(&self) -> Self::R<'_> {
         let txn = self.env.read_txn().unwrap();
         Self::R { db: self.db, txn }
+    }
+
+    fn key_count(&self) -> u64 {
+        let txn = self.env.read_txn().unwrap();
+        self.db.len(&txn).unwrap()
     }
 }
 
@@ -487,6 +502,10 @@ impl<'a> BenchDatabase for crate::common::OptimisticRocksdbBenchDatabase<'a> {
         let snapshot = self.db.snapshot();
         crate::common::OptimisticRocksdbBenchReadTransaction { snapshot }
     }
+
+    fn key_count(&self) -> u64 {
+        self.db.iterator(IteratorMode::Start).count() as u64
+    }
 }
 
 pub struct OptimisticRocksdbBenchWriteTransaction<'a> {
@@ -619,6 +638,10 @@ impl<'a> BenchDatabase for RocksdbBenchDatabase<'a> {
         let snapshot = self.db.snapshot();
         RocksdbBenchReadTransaction { snapshot }
     }
+
+    fn key_count(&self) -> u64 {
+        self.db.iterator(IteratorMode::Start).count() as u64
+    }
 }
 
 pub struct RocksdbBenchWriteTransaction<'a> {
@@ -743,6 +766,10 @@ impl<'a> BenchDatabase for SanakirjaBenchDatabase<'a> {
     fn read_transaction(&self) -> Self::R<'_> {
         let txn = sanakirja::Env::txn_begin(self.db).unwrap();
         SanakirjaBenchReadTransaction { txn }
+    }
+
+    fn key_count(&self) -> u64 {
+        self.read_transaction().get_reader().len()
     }
 }
 
