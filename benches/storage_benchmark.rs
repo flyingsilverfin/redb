@@ -29,7 +29,7 @@ fn main() {
     // rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
     lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
     // redb_benchmark(&op_size, thread_count, &tmpdir_path);
-
+    // sled_benchmark(&op_size, thread_count, &tmpdir_path);}
 }
 
 fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
@@ -60,7 +60,6 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
     print_data_size(&dir, &lmdb_driver);
 }
 
-
 fn redb_benchmark(op_size: &OpSize, thread_count: usize, path: &String) {
     let dir = Path::new(path).join("redb");
     let mut db = redb::Database::builder()
@@ -83,3 +82,13 @@ fn redb_benchmark(op_size: &OpSize, thread_count: usize, path: &String) {
     scan_step(&table, &op_size, thread_count);
     print_data_size(&dir, &table);
 }
+
+fn sled_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
+    let dir = Path::new(tmpdir_path);
+    let db = sled::Config::new().path(dir).open().unwrap();
+    let lmdb_driver = SledBenchDatabase::new(&db, dir);
+    preload_step(&lmdb_driver, &op_size, thread_count);
+    scan_step(&lmdb_driver, &op_size, thread_count);
+    print_data_size(&dir, &lmdb_driver);
+}
+
