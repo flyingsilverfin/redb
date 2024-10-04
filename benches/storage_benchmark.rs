@@ -1,22 +1,23 @@
-use byte_unit::rust_decimal::prelude::ToPrimitive;
-use heed::EnvFlags;
 use std::env;
 use std::fmt::Display;
-use std::fs;
 use std::path::Path;
 use std::time::Instant;
+
+use byte_unit::rust_decimal::prelude::ToPrimitive;
+use heed::EnvFlags;
 use rocksdb::SliceTransform;
-use tempfile::TempDir;
+use sled::Mode::HighThroughput;
+
+use common::*;
+use storage_step::*;
+
+use crate::storage_common::{available_disk, PREFIX_SIZE};
+use crate::storage_op_size::OpSize;
 
 mod common;
 mod storage_common;
 mod storage_op_size;
 mod storage_step;
-
-use common::*;
-use storage_step::*;
-use crate::storage_common::{available_disk, PREFIX_SIZE};
-use crate::storage_op_size::OpSize;
 
 fn main() {
     let mut args: Vec<String> = env::args().collect();
@@ -106,7 +107,12 @@ fn redb_benchmark(op_size: &OpSize, thread_count: usize, path: &String) {
 
 fn sled_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
     let dir = Path::new(tmpdir_path);
-    let db = sled::Config::new().path(dir).open().unwrap();
+    let db = sled::Config::new()
+        .path(dir)
+        .mode(HighThroughput)
+        .use_compression(false)
+        .flush_every_ms(Some(10_000))
+        .open().unwrap();
     let lmdb_driver = SledBenchDatabase::new(&db, dir);
     preload_step(&lmdb_driver, &op_size, thread_count);
     scan_step(&lmdb_driver, &op_size, thread_count);
