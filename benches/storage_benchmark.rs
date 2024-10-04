@@ -50,7 +50,7 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
         options.map_size(available_disk() as usize); // 125GB (size of the benchmark VM memory)
-        options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC);
+        options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD);
         // options.open(tmpdir.path()).unwrap()
         options.open(dir).unwrap()
     };
