@@ -5,6 +5,7 @@ use std::fmt::Display;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
+use rocksdb::SliceTransform;
 use tempfile::TempDir;
 
 mod common;
@@ -14,7 +15,7 @@ mod storage_step;
 
 use common::*;
 use storage_step::*;
-use crate::storage_common::available_disk;
+use crate::storage_common::{available_disk, PREFIX_SIZE};
 use crate::storage_op_size::OpSize;
 
 fn main() {
@@ -49,6 +50,8 @@ fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String
     rocksdb_opts.create_if_missing(true);
     rocksdb_opts.set_max_subcompactions(thread_count.to_u32().unwrap());
     rocksdb_opts.set_max_background_jobs(thread_count.to_i32().unwrap());
+    rocksdb_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(PREFIX_SIZE));
+    // useFixedLengthPrefixExtractor
     rocksdb_opts.set_enable_write_thread_adaptive_yield(true);
     rocksdb_opts.set_allow_concurrent_memtable_write(true);
     rocksdb_opts.set_block_based_table_factory(&bb);

@@ -92,7 +92,7 @@ fn scan_keys<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, mut r
     {
         let reader = tx.get_reader();
         for _ in 0..op_size.scan_per_tx_count {
-            let key = gen_key(&mut rng); // TODO: should be a prefix of some value, not the value itself
+            let key = gen_prefix(rng);
             let mut scanned_key = 0;
             let mut iter = reader.range_from(&key);
             for i in 0..op_size.iter_per_scan_count {

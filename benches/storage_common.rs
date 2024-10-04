@@ -1,11 +1,18 @@
 use std::mem::size_of;
 use std::path::Path;
 
+pub const PREFIX_SIZE: usize = 16;
 const KEY_SIZE: usize = 48;
 
 pub fn create_rng() -> fastrand::Rng {
     // fastrand::Rng::with_seed(seed)
     fastrand::Rng::new()
+}
+
+pub fn gen_prefix(rng: &mut fastrand::Rng) -> [u8; PREFIX_SIZE]  {
+    let mut prefix = [0u8; PREFIX_SIZE];
+    fill_slice(&mut prefix, rng);
+    prefix
 }
 
 pub fn gen_key(rng: &mut fastrand::Rng) -> [u8; KEY_SIZE] {
