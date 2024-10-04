@@ -59,4 +59,5 @@ for path in walk:
         if file == "log.md":
             log_file_path = os.path.join(path, file)
             print_summaries(log_file_path)
+            print("\n ------ \n")
 
