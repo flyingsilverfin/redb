@@ -27,8 +27,8 @@ fn main() {
     println!("op size: {:?}\nthread count: {}\ndir: {:?}", &op_size, thread_count, &tmpdir_path);
 
     // rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
-    // lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
-    redb_benchmark(&op_size, thread_count, &tmpdir_path);
+    lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
+    // redb_benchmark(&op_size, thread_count, &tmpdir_path);
 
 }
 
