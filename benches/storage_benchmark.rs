@@ -1,11 +1,11 @@
 use std::env;
 use std::fmt::Display;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use byte_unit::rust_decimal::prelude::ToPrimitive;
 use heed::EnvFlags;
-use rocksdb::SliceTransform;
+use rocksdb::{OptimisticTransactionDB, SliceTransform};
 use sled::Mode::HighThroughput;
 
 use common::*;
@@ -23,24 +23,28 @@ fn main() {
     let mut args: Vec<String> = env::args().collect();
     args.pop().unwrap(); // pop '--bench'
     let tmpdir_path = args.pop().unwrap();
-    let db = args.pop().unwrap();
     let thread_count = args.pop().unwrap().parse::<usize>().unwrap();
     let op_size = OpSize::from_str(args.pop().unwrap().as_str());
 
-    println!("db: {:?}\nop size: {:?}\nthread count: {}\ndir: {:?}", db, &op_size, thread_count, &tmpdir_path);
+    println!("op size: {:?}\nthread count: {}\ndir: {:?}", &op_size, thread_count, &tmpdir_path);
 
-    match db.as_str() {
-        "lmdb" => { lmdb_benchmark(&op_size, thread_count, &tmpdir_path); }
-        "rocksdb" => { rocksdb_benchmark(&op_size, thread_count, &tmpdir_path); }
-        "redb" => { redb_benchmark(&op_size, thread_count, &tmpdir_path); }
-        "sled" => { sled_benchmark(&op_size, thread_count, &tmpdir_path);}
-        _ => { panic!("invalid database"); }
-    }
+    let rocksdb_path = Path::new(&tmpdir_path).join("rocksdb");
+    let rocksdb = rocksdb_benchmark(&op_size, thread_count, &rocksdb_path);
+    let lmdb_path = Path::new(&tmpdir_path).join("lmdb");
+    lmdb_benchmark(&rocksdb, &op_size, thread_count, &lmdb_path);
+
+    // match db.as_str() {
+    //     "lmdb" => { lmdb_benchmark(&op_size, thread_count, &tmpdir_path); }
+    //     "rocksdb" => { rocksdb_benchmark(&op_size, thread_count, &tmpdir_path); }
+    //     "redb" => { redb_benchmark(&op_size, thread_count, &tmpdir_path); }
+    //     "sled" => { sled_benchmark(&op_size, thread_count, &tmpdir_path);}
+    //     _ => { panic!("invalid database"); }
+    // }
 }
 
-fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
-    // let tmpdir = TempDir::new_in(tmpdir_path).unwrap();
-    let dir = Path::new(tmpdir_path);
+fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, dir: &PathBuf) -> OptimisticTransactionDB {
+    std::fs::create_dir_all(dir).unwrap();
+
     let mut bb = rocksdb::BlockBasedOptions::default();
     bb.set_block_cache(&rocksdb::Cache::new_lru_cache(4 * 1_024 * 1_024 * 1_024)); // TODO
     // setFilterPolicy method does non-exist on the driver
@@ -65,10 +69,11 @@ fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String
     preload_step(&rocksdb_driver, &op_size, thread_count);
     scan_step(&rocksdb_driver, &op_size, thread_count);
     print_data_size(&dir, &rocksdb_driver);
+    rocksdb_db
 }
 
-fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
-    let dir = Path::new(tmpdir_path);
+fn lmdb_benchmark(rocksdb: &OptimisticTransactionDB, op_size: &OpSize, thread_count: usize, dir: &PathBuf) {
+    std::fs::create_dir_all(dir).unwrap();
     let lmdb_env = unsafe {
         let mut options = heed::EnvOpenOptions::new();
         options.map_size(available_disk() as usize); // 125GB (size of the benchmark VM memory)
@@ -77,7 +82,9 @@ fn lmdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
         options.open(dir).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);
-    preload_step(&lmdb_driver, &op_size, thread_count);
+    // preload_step(&lmdb_driver, &op_size, thread_count);
+    let rocksdb_driver = OptimisticRocksdbBenchDatabase::new(rocksdb);
+    preload_from(&rocksdb_driver, &lmdb_driver, &op_size, thread_count);
     scan_step(&lmdb_driver, &op_size, thread_count);
     print_data_size(&dir, &lmdb_driver);
 }

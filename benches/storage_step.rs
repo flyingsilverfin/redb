@@ -27,12 +27,41 @@ pub fn preload_step<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize
     print_preload_stats::<T>(op_size, duration);
 }
 
+pub fn preload_from<U: BenchDatabase + Send + Sync, T: BenchDatabase + Send + Sync>(source_driver: &U, driver: &T, op_size: &OpSize, thread_count: usize) {
+    let start = Instant::now();
+    thread::scope(|scope| {
+        for thread_id in 0..thread_count {
+            scope.spawn(move || preload_step_single_thread_from(source_driver, driver, op_size, thread_count, thread_id));
+        }
+    });
+    let end = Instant::now();
+    let duration = end - start;
+    print_preload_stats::<T>(op_size, duration);
+}
+
 fn preload_step_single_thread<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, thread_count: usize, thread_id: usize) {
     let mut rng = create_rng();
     let mut last_printed = Instant::now();
     let mut transactions = 0;
     for _ in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
         insert_keys(driver, op_size, &mut rng);
+        transactions += 1;
+        let time_since_last_print = Instant::now() - last_printed;
+        if time_since_last_print > PRINT_FREQUENCY_SEC {
+            print_insertion_speed(op_size, thread_id, transactions, time_since_last_print);
+            last_printed = Instant::now();
+            transactions = 0;
+        }
+    }
+}
+fn preload_step_single_thread_from<U: BenchDatabase + Send + Sync, T: BenchDatabase + Send + Sync>(source_driver: &U, driver: &T, op_size: &OpSize, thread_count: usize, thread_id: usize) {
+    let mut last_printed = Instant::now();
+    let mut transactions = 0;
+    let source_transaction = source_driver.read_transaction();
+    let reader = source_transaction.get_reader();
+    let mut iterator = reader.range_from(&[0]);
+    for _ in 0..(op_size.insert_key_total_count / op_size.insert_key_per_tx_count / thread_count) {
+        insert_keys_from_ordered(driver, op_size, &mut iterator);
         transactions += 1;
         let time_since_last_print = Instant::now() - last_printed;
         if time_since_last_print > PRINT_FREQUENCY_SEC {
@@ -53,6 +82,22 @@ fn insert_keys<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, mut
             match inserter.insert(&key, &value) {
                 Ok(()) => {}
                 Err(()) => {}
+            }
+        }
+    }
+    tx.commit().unwrap();
+}
+
+fn insert_keys_from_ordered<Iter: BenchIterator, T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize, source_iter: &mut Iter) {
+    let mut tx = driver.write_transaction();
+    {
+        let mut inserter = tx.get_inserter();
+        for _ in 0..op_size.insert_key_per_tx_count {
+            if let Some((key, value)) = source_iter.next() {
+                match inserter.append(key.as_ref(), value.as_ref()) {
+                    Ok(()) => {}
+                    Err(()) => {}
+                }
             }
         }
     }

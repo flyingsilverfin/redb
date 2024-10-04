@@ -6,6 +6,7 @@ use std::fs;
 use std::fs::File;
 use std::ops::Bound;
 use std::path::Path;
+use heed::PutFlags;
 
 #[allow(dead_code)]
 const X: TableDefinition<&[u8], &[u8]> = TableDefinition::new("x");
@@ -41,6 +42,8 @@ pub trait BenchWriteTransaction {
 pub trait BenchInserter {
     #[allow(clippy::result_unit_err)]
     fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()>;
+
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()>;
 
     #[allow(clippy::result_unit_err)]
     fn remove(&mut self, key: &[u8]) -> Result<(), ()>;
@@ -204,6 +207,10 @@ impl BenchInserter for RedbBenchInserter<'_> {
         self.table.insert(key, value).map(|_| ()).map_err(|_| ())
     }
 
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        todo!()
+    }
+
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
         self.table.remove(key).map(|_| ()).map_err(|_| ())
     }
@@ -327,6 +334,10 @@ impl<'a> BenchInserter for SledBenchInserter<'a> {
         self.db.insert(key, value).map(|_| ()).map_err(|_| ())
     }
 
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        todo!()
+    }
+
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
         self.db.remove(key).map(|_| ()).map_err(|_| ())
     }
@@ -397,6 +408,13 @@ pub struct HeedBenchInserter<'txn, 'db> {
 impl BenchInserter for HeedBenchInserter<'_, '_> {
     fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
         self.db.put(self.txn, key, value).map_err(|e| {
+            dbg!(e);
+            return ();
+        })
+    }
+
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        self.db.put_with_flags(self.txn, PutFlags::APPEND,  key, value).map_err(|e| {
             dbg!(e);
             return ();
         })
@@ -540,6 +558,10 @@ impl BenchInserter for crate::common::OptimisticRocksdbBenchInserter<'_> {
         })
     }
 
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        todo!()
+    }
+
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
         self.txn.delete(key).map_err(|_| ())
     }
@@ -670,6 +692,10 @@ impl BenchInserter for RocksdbBenchInserter<'_> {
             dbg!(e);
             return ();
         })
+    }
+
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        todo!()
     }
 
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
@@ -806,6 +832,10 @@ impl BenchInserter for SanakirjaBenchInserter<'_, '_> {
             .map(|_| ());
         self.txn.set_root(0, self.table.db.into());
         result
+    }
+
+    fn append(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        todo!()
     }
 
     fn remove(&mut self, key: &[u8]) -> Result<(), ()> {
