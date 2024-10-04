@@ -22,15 +22,19 @@ fn main() {
     let mut args: Vec<String> = env::args().collect();
     args.pop().unwrap(); // pop '--bench'
     let tmpdir_path = args.pop().unwrap();
+    let db = args.pop().unwrap();
     let thread_count = args.pop().unwrap().parse::<usize>().unwrap();
     let op_size = OpSize::from_str(args.pop().unwrap().as_str());
 
-    println!("op size: {:?}\nthread count: {}\ndir: {:?}", &op_size, thread_count, &tmpdir_path);
+    println!("db: {:?}\nop size: {:?}\nthread count: {}\ndir: {:?}", db, &op_size, thread_count, &tmpdir_path);
 
-    // rocksdb_benchmark(&op_size, thread_count, &tmpdir_path);
-    lmdb_benchmark(&op_size, thread_count, &tmpdir_path);
-    // redb_benchmark(&op_size, thread_count, &tmpdir_path);
-    // sled_benchmark(&op_size, thread_count, &tmpdir_path);}
+    match db.as_str() {
+        "lmdb" => { lmdb_benchmark(&op_size, thread_count, &tmpdir_path); }
+        "rocksdb" => { rocksdb_benchmark(&op_size, thread_count, &tmpdir_path); }
+        "redb" => { redb_benchmark(&op_size, thread_count, &tmpdir_path); }
+        "sled" => { sled_benchmark(&op_size, thread_count, &tmpdir_path);}
+        _ => { panic!("invalid database"); }
+    }
 }
 
 fn rocksdb_benchmark(op_size: &OpSize, thread_count: usize, tmpdir_path: &String) {
