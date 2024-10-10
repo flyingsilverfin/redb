@@ -79,6 +79,7 @@ fn lmdb_benchmark(rocksdb: &OptimisticTransactionDB, op_size: &OpSize, thread_co
         options.map_size(available_disk() as usize); // 125GB (size of the benchmark VM memory)
         options.flags(EnvFlags::NO_TLS | EnvFlags::NO_SYNC | EnvFlags::NO_READ_AHEAD);
         // options.open(tmpdir.path()).unwrap()
+        options.max_readers(1000);
         options.open(dir).unwrap()
     };
     let lmdb_driver = HeedBenchDatabase::new(&lmdb_env);

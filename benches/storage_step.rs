@@ -30,6 +30,7 @@ pub fn preload_step<T: BenchDatabase + Send + Sync>(driver: &T, op_size: &OpSize
 pub fn preload_from<U: BenchDatabase + Send + Sync, T: BenchDatabase + Send + Sync>(source_driver: &U, driver: &T, op_size: &OpSize, thread_count: usize) {
     let start = Instant::now();
     thread::scope(|scope| {
+        let thread_count = 1;
         for thread_id in 0..thread_count {
             scope.spawn(move || preload_step_single_thread_from(source_driver, driver, op_size, thread_count, thread_id));
         }
